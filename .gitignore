@@ -1,0 +1,101 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Database
+*.db
+*.sqlite3
+*.csv
+*__pycache__
+
+# Models & Large Files
+# We allow .pkl, .bin, .pth to be tracked by Git LFS
+backend/chroma_db/
+project/data/ml_latest/
+backend/data/
+
+# NCF Ignored Files
+checkpoint_*.pth
+runs_ncf/**/checkpoint_*.pth
+runs_ncf/**/training_report.json
+project/data/
+runs_ncf/**/run_*/
+!runs_ncf/**/best_model.pth
+!runs_ncf/**/genome_matrix.npy
+!runs_ncf/**/user_mapping.pkl
+!runs_ncf/**/movie_mapping.pkl
