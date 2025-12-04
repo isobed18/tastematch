@@ -84,10 +84,5 @@ Thumbs.db
 *__pycache__
 
 # Models & Large Files
-*.pkl
-*.bin
-*.h5
-*.pt
-*.pth
+# We allow .pkl, .bin, .pth to be tracked by Git LFS
 backend/chroma_db/
-project/models/
