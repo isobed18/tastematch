@@ -1,0 +1,8 @@
+Checking alignment/shapes...
+Item Map Size (Num Items): 86537
+Text Embeddings Shape: (86537, 384)
+Text Embeddings aligned.
+Genome Matrix Shape: (86537, 1128)
+Train Users: 285794
+Max Item Index in Interactions: 86523
+Expected Max Index < 86537

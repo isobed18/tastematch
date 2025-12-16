@@ -44,7 +44,7 @@ class FMDataLoader:
     def _densify_data(self):
         # STRATEGY: Keep strictly the top `keep_top_pct` (e.g., 0.1) of users and items.
         # This creates a small, super-dense core dataset for debugging/training.
-        target_pct = 0.005 # Keep top 0.1% (Ultra-fast for metric verification)
+        target_pct = 0.005 # Keep top 0.5% (Ultra-fast for metric verification)
         print(f"Applying Aggressive Densification (Keep Top {target_pct*100}% of Users/Items)...")
         
         # 1. Keep Top Users
