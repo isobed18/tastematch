@@ -39,9 +39,11 @@ class TwoTowerDataset(Dataset):
             else:
                 full_timeline = events
                 
+
             # Filter duplicates or just filter by weight?
-            # Filter Dislikes
-            pos_events = [e for e in full_timeline if e[1] >= 1.0]
+            # Filter Skips/Ignores (keep Dislikes with weight 0.5)
+            # Reverting logic as requested: Include Dislikes.
+            pos_events = [e for e in full_timeline if e[1] > 0.0]
             self.user_positives.append(pos_events)
             self.user_ids.append(real_user_id)
             
