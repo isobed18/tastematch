@@ -4,106 +4,121 @@ import numpy as np
 import pickle
 import random
 
+
+
 class TwoTowerDataset(Dataset):
     def __init__(self, interactions_path, item_map_path, max_history=20, is_train=True):
         """
         interactions_path: Path to .pkl file containing list of user dicts.
-                           [{'user_idx': u, 'events': [(item, weight, ts), ...]}, ...]
-        max_history: Number of recent items to use for user representation.
         """
         with open(interactions_path, 'rb') as f:
-            self.data = pickle.load(f)
+            raw_data = pickle.load(f)
             
         self.max_history = max_history
         self.is_train = is_train
+        self.samples = []
+        
+
+        # Optimization: Store ONLY positive events for each user to avoid filtering in __getitem__
+        # Format: self.user_positives[user_idx] = [(item_idx, weight), ...]
+        self.user_positives = []
+        self.user_ids = [] # Store actual User IDs corresponding to the user_positives list
+        
+        print("Pre-processing dataset for fast access...")
+        
+        for i, user_data in enumerate(raw_data):
+            events = user_data['events'] # raw events
+            real_user_id = user_data['user_idx']
+            
+            # Pre-filter positives once
+            # If validation, we also need to include 'context' in the history timeline
+            if not is_train and 'context' in user_data:
+                # Validation: Prepend context to events for history purposes
+                # Context is train history.
+                full_timeline = user_data['context'] + events
+            else:
+                full_timeline = events
+                
+            # Filter duplicates or just filter by weight?
+            # Filter Dislikes
+            pos_events = [e for e in full_timeline if e[1] >= 1.0]
+            self.user_positives.append(pos_events)
+            self.user_ids.append(real_user_id)
+            
+            # Now generate samples pointing to indices in pos_events
+            # For Training: Sliding window over pos_events
+            if self.is_train:
+                if len(pos_events) < 2:
+                    continue
+                    
+                # We need at least 1 history item.
+                # pos_events = [p0, p1, p2, ...]
+                # Target p1 -> Hist [p0]
+                # Target p2 -> Hist [p0, p1]
+                for k in range(1, len(pos_events)):
+                    # (user_index_in_list, target_index_in_pos_events)
+                    self.samples.append((i, k))
+                    
+            else:
+                # Validation logic
+                # Target must be from the 'events' part (not context)
+                # But 'pos_events' is merged. We need to find which ones are valid targets.
+                # Valid targets are those that came from 'events'.
+                # Since we concatenated, they are at the end.
+                
+                # Simplified Validation: Just pick the LAST positive event as target.
+                if len(pos_events) > 1:
+                    self.samples.append((i, len(pos_events) - 1))
+                # If no positives, skip or placeholder? 
+                
+        # We don't need raw_data anymore to save RAM, unless needed for something else?
+        # self.data = raw_data 
+        del raw_data
+        
+        print(f"Generated {len(self.samples)} samples. Optimized structure ready.")
         
     def __len__(self):
-        return len(self.data)
+        return len(self.samples)
         
     def __getitem__(self, idx):
-        user_data = self.data[idx]
-        user_idx = user_data['user_idx']
-        events = user_data['events'] # list of (item, weight, ts)
+        # 1. Retrieve Pre-processed Metadata
+        user_idx_in_list, target_idx = self.samples[idx]
         
-        # 1. Sample Positive Target
-        # For training, we want to predict the *next* item given history.
-        # Or just 'an' item given 'other' items (Masked Language Model style?)
-        # Standard Recommender: Predict Item[t] given Item[0...t-1].
-        # In this strict time-split setup: 
-        # We should iterate over ALL events as targets? 
-        # Or sample one per epoch per user? Sampling is faster for large datasets.
+        # Access the user's positive sequence and Real User ID
+        user_seq = self.user_positives[user_idx_in_list]
+        real_user_id = self.user_ids[user_idx_in_list]
         
-        if self.is_train:
-            # Randomly pick one event as 'target', use previous events as history.
-            # Must have at least 1 prior event to have history? 
-            # If only 1 event, history is empty (cold start).
-
-            # Filter valid target indices (must have weight >= 1.0)
-            valid_indices = [i for i in range(1, len(events)) if events[i][1] >= 1.0]
-            
-            if valid_indices:
-                target_idx = random.choice(valid_indices)
-            else:
-                # Fallback: if all valid interactions are dislikes, just pick any random one
-                # or better, pick the one with highest weight
-                target_idx = random.randint(1, len(events) - 1)
-                
-            target_event = events[target_idx]
-            history_events = events[:target_idx]
-            
-        else:
-            # Validation
-            # Target is from 'events' (which are val_events).
-            # History is from 'context' (train_events) + prior val_events?
-            # Usually validation is: Predict next item given ONLY training history?
-            # The preprocessing stored 'context' which is the full train history.
-            # If we predict a specific val event, we technically know the validation events before it.
-            # But simpler: History = Train Items. Target = Masked Validation Item.
-
-            # Let's sample a target from Validation set.
-            # Filter valid (Like/Superlike)
-            valid_indices = [i for i in range(len(events)) if events[i][1] >= 1.0]
-            if valid_indices:
-                target_idx = random.choice(valid_indices)
-            else:
-                target_idx = random.randint(0, len(events) - 1)
-                
-            target_event = events[target_idx]
-            
-            # History comes from the 'context' field we saved + events before target
-            # Use .get('context', [])
-            history_events = user_data.get('context', []) + events[:target_idx]
-            
-        # 2. Process Target
+        # 2. Get Target
+        target_event = user_seq[target_idx]
         pos_item_idx = target_event[0]
         pos_weight = target_event[1]
         
-
-        # 3. Process History
-        # Filter out dislikes from history (keep only weight >= 1.0)
-        # We want the User Vector to represent "What I like", not "What I hate".
-        # (Unless we had a specific "Hated Tower", but for now, ignore dislikes)
-        positive_history = [e for e in history_events if e[1] >= 1.0]
+        # 3. Get History (Efficient Slice)
+        # History is everything before target in this pre-filtered list
+        # Take last N immediately
+        start_idx = max(0, target_idx - self.max_history)
+        recent_history = user_seq[start_idx : target_idx]
         
-        # Take last N items from Positive History
-        recent_history = positive_history[-self.max_history:]
+        # No filtering needed here anymore!
         
         if len(recent_history) == 0:
-            hist_indices = [0] # Placeholder
+            hist_indices = [0]
             hist_weights = [0.0]
-            hist_mask = [0.0] # Empty
+            hist_mask = [0.0]
         else:
             hist_indices = [e[0] for e in recent_history]
             hist_weights = [float(e[1]) for e in recent_history]
             hist_mask = [1.0] * len(hist_indices)
             
+        # Return REAL User ID, not the list index
+        
         return {
-            'user_idx': torch.tensor(user_idx, dtype=torch.long),
-            'item_idx': torch.tensor(pos_item_idx, dtype=torch.long), # The Positive Target
+            'user_idx': torch.tensor(real_user_id, dtype=torch.long),
+            'item_idx': torch.tensor(pos_item_idx, dtype=torch.long),
             'weight': torch.tensor(pos_weight, dtype=torch.float),
             'hist_indices': torch.tensor(hist_indices, dtype=torch.long),
             'hist_weights': torch.tensor(hist_weights, dtype=torch.float),
-            'hist_mask': torch.tensor(hist_mask, dtype=torch.float) # 1 for valid, 0 for padding
+            'hist_mask': torch.tensor(hist_mask, dtype=torch.float)
         }
 
 def collate_fn(batch):

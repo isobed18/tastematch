@@ -29,15 +29,17 @@ USER_MAP_PATH = os.path.join(DATA_DIR, 'user_map.pkl')
 # Hyperparameters
 EMBEDDING_DIM = 64 # Dimension for IDs
 PROJECTION_DIM = 128 # Dimension for separate towers before concat
-LATENT_DIM = 256 # Final vector dimension
+
+LATENT_DIM = 512 # Final vector dimension (Increased from 256)
 TEXT_EMBEDDING_DIM = 384 # Output of MiniLM
 GENOME_DIM = 1128 # Standard ML Genome
 
-BATCH_SIZE = 1024
+
+BATCH_SIZE = 4096 # Increased for higher GPU Util
 LEARNING_RATE = 1e-3
 WEIGHT_DECAY = 1e-4
 EPOCHS = 10
-TEMPERATURE = 0.07 # InfoNCE Temp
+TEMPERATURE = 0.05 # InfoNCE Temp (Lowered from 0.07 for sharper predictions)
 
 # Interaction Weights (Swipe Logic)
 WEIGHT_SUPERLIKE = 2.0
