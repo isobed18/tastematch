@@ -3,9 +3,12 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
+
 import numpy as np
 import os
 import time
+import json
+from datetime import datetime
 from tqdm import tqdm
 
 try:
@@ -49,6 +52,18 @@ def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Device: {device}")
     
+
+
+    # Setup Reporting Directory (Project Root)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Go up two levels from project/two_tower to tastematch/
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+    run_dir = os.path.join(project_root, "runs_tt", f"run_{timestamp}")
+    
+    if not os.path.exists(run_dir):
+        os.makedirs(run_dir)
+    print(f"Run Directory: {run_dir}")
+
     # Update Config with Args if needed (or just use args)
     print(f"Hyperparameters: LR={args.lr}, Batch={args.batch_size}, Epochs={args.epochs}, Patience={args.patience}")
     
@@ -56,8 +71,29 @@ def train(args):
     train_ds = dataset.TwoTowerDataset(config.TRAIN_INTERACTIONS_PATH, config.ITEM_MAP_PATH, is_train=True)
     val_ds = dataset.TwoTowerDataset(config.VAL_INTERACTIONS_PATH, config.ITEM_MAP_PATH, is_train=False)
     
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, collate_fn=dataset.collate_fn, num_workers=0)
-    val_loader = DataLoader(val_ds, batch_size=128, shuffle=False, collate_fn=dataset.collate_fn, num_workers=0)
+
+    # Optimize DataLoader
+    num_workers = 4 # Adjust based on CPU cores (usually 4-8 is sweet spot)
+    
+    train_loader = DataLoader(
+        train_ds, 
+        batch_size=args.batch_size, 
+        shuffle=True, 
+        collate_fn=dataset.collate_fn, 
+        num_workers=num_workers,
+        pin_memory=True, # Faster transfer to GPU
+        persistent_workers=True if num_workers > 0 else False,
+        prefetch_factor=2 if num_workers > 0 else None
+    )
+    
+    val_loader = DataLoader(
+        val_ds, 
+        batch_size=2048, # Larger batch for validation
+        shuffle=False, 
+        collate_fn=dataset.collate_fn, 
+        num_workers=num_workers,
+        pin_memory=True
+    )
     
     # Load Maps
     import pickle
@@ -81,13 +117,18 @@ def train(args):
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     scaler = torch.cuda.amp.GradScaler()
     
+
     best_recall = 0.0
     patience_counter = 0
+    history = []
     
     for epoch in range(args.epochs):
         model.train()
         total_loss = 0
         steps = 0
+        
+        pos_mu = 0
+        neg_mu = 0
         
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.epochs}")
         for batch in pbar:
@@ -100,7 +141,7 @@ def train(args):
             
             optimizer.zero_grad()
             
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 model_batch = {
                     'user_idx': user_idx,
                     'item_idx': item_idx,
@@ -115,10 +156,12 @@ def train(args):
                 # Diagonal is positive
                 pos_logits = torch.diag(logits)
                 # Off-diagonal is negative (approx)
-                # Create mask for off-diagonal
                 eye = torch.eye(logits.shape[0], device=logits.device)
                 neg_logits = logits[eye == 0]
                 
+                # Stats for logging
+                pos_mu += pos_logits.mean().item()
+                neg_mu += neg_logits.mean().item()
 
                 # Compute Loss (Weighted)
                 loss_weighted = model.compute_loss(user_vec, item_vec, weights)
@@ -135,13 +178,18 @@ def train(args):
             
             pbar.set_postfix({
                 'loss': total_loss/steps, 
-                'pos': f"{pos_logits.mean().item():.2f}",
-                'neg': f"{neg_logits.mean().item():.2f}",
+                'pos': f"{pos_mu/steps:.2f}",
+                'neg': f"{neg_mu/steps:.2f}",
                 'lr': f"{optimizer.param_groups[0]['lr']:.2e}"
             })
         
         scheduler.step()
-        print(f"Epoch {epoch+1} Loss: {total_loss/steps:.4f}")
+        
+        avg_loss = total_loss / steps
+        avg_pos = pos_mu / steps
+        avg_neg = neg_mu / steps
+        
+        print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
         
         # Validation
         print("Pre-computing Item Embeddings...")
@@ -162,11 +210,21 @@ def train(args):
         recall = evaluate(model, val_loader, all_item_embeddings, k=50)
         print(f"Val Recall@50: {recall:.4f}")
         
+        # Log History
+        history.append({
+            'epoch': epoch + 1,
+            'loss': avg_loss,
+            'recall_50': recall,
+            'pos_logits': avg_pos,
+            'neg_logits': avg_neg,
+            'lr': optimizer.param_groups[0]['lr']
+        })
+        
         # Early Stopping Logic
         if recall > best_recall:
             best_recall = recall
             patience_counter = 0
-            torch.save(model.state_dict(), os.path.join(config.DATA_DIR, "best_two_tower.pth"))
+            torch.save(model.state_dict(), os.path.join(run_dir, "best_two_tower.pth"))
             print(f"Saved Best Model (Recall: {best_recall:.4f})")
         else:
             patience_counter += 1
@@ -175,6 +233,74 @@ def train(args):
         if patience_counter >= args.patience:
             print("Early Stopping Triggered.")
             break
+            
+        # Regular Save
+        if (epoch + 1) % 5 == 0:
+            torch.save(model.state_dict(), os.path.join(run_dir, f"checkpoint_epoch_{epoch+1}.pth"))
+            
+    # Final Report Generation
+    print("Training Complete. Generating Reports...")
+    
+    # 1. JSON Report
+    final_report = {
+        'timestamp': timestamp,
+        'config': vars(args),
+        'best_recall': best_recall,
+        'final_epoch': len(history),
+        'history': history,
+        'system': {
+            'device': str(device),
+            'cuda_name': torch.cuda.get_device_name(0) if torch.cuda.is_available() else "N/A"
+        }
+    }
+    with open(os.path.join(run_dir, 'training_report.json'), 'w') as f:
+        json.dump(final_report, f, indent=4)
+        
+    # 2. Plotting (if matplotlib available)
+    try:
+        import matplotlib.pyplot as plt
+        
+        epochs = [entry['epoch'] for entry in history]
+        losses = [entry['loss'] for entry in history]
+        recalls = [entry['recall_50'] for entry in history]
+        pos_logits = [entry['pos_logits'] for entry in history]
+        neg_logits = [entry['neg_logits'] for entry in history]
+        
+        plt.figure(figsize=(12, 10))
+        
+        # Loss
+        plt.subplot(2, 2, 1)
+        plt.plot(epochs, losses, label='Loss', color='red')
+        plt.title('Training Loss')
+        plt.xlabel('Epoch')
+        plt.grid(True)
+        
+        # Recall
+        plt.subplot(2, 2, 2)
+        plt.plot(epochs, recalls, label='Call@50', color='blue')
+        plt.title('Validation Recall@50')
+        plt.xlabel('Epoch')
+        plt.grid(True)
+        
+        # Logits
+        plt.subplot(2, 2, 3)
+        plt.plot(epochs, pos_logits, label='Pos Logits', color='green')
+        plt.plot(epochs, neg_logits, label='Neg Logits', color='orange')
+        plt.title('Logit Separation')
+        plt.xlabel('Epoch')
+        plt.legend()
+        plt.grid(True)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(run_dir, 'training_curves.png'))
+        print(f"Plots saved to {run_dir}/training_curves.png")
+        
+    except ImportError:
+        print("Matplotlib not installed. Skipping plots.")
+    except Exception as e:
+        print(f"Error generating plots: {e}")
+
+    print(f"\nAll artifacts saved in: {run_dir}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Two Tower Model")
