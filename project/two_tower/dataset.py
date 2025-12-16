@@ -78,9 +78,15 @@ class TwoTowerDataset(Dataset):
         pos_item_idx = target_event[0]
         pos_weight = target_event[1]
         
+
         # 3. Process History
-        # Take last N items
-        recent_history = history_events[-self.max_history:]
+        # Filter out dislikes from history (keep only weight >= 1.0)
+        # We want the User Vector to represent "What I like", not "What I hate".
+        # (Unless we had a specific "Hated Tower", but for now, ignore dislikes)
+        positive_history = [e for e in history_events if e[1] >= 1.0]
+        
+        # Take last N items from Positive History
+        recent_history = positive_history[-self.max_history:]
         
         if len(recent_history) == 0:
             hist_indices = [0] # Placeholder

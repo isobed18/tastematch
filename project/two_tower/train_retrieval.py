@@ -1,4 +1,6 @@
 import torch
+
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import numpy as np
@@ -117,13 +119,18 @@ def train(args):
                 eye = torch.eye(logits.shape[0], device=logits.device)
                 neg_logits = logits[eye == 0]
                 
-                loss = model.compute_loss(user_vec, item_vec, weights)
-            
-            scaler.scale(loss).backward()
+
+                # Compute Loss (Weighted)
+                loss_weighted = model.compute_loss(user_vec, item_vec, weights)
+                
+                # Compute Unweighted Loss for logging (Raw CrossEntropy)
+                loss_unweighted = F.cross_entropy(logits, torch.arange(logits.shape[0], device=logits.device))
+                
+            scaler.scale(loss_weighted).backward()
             scaler.step(optimizer)
             scaler.update()
             
-            total_loss += loss.item()
+            total_loss += loss_unweighted.item() # Log the unweighted loss to see convergence
             steps += 1
             
             pbar.set_postfix({
