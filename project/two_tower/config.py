@@ -30,7 +30,7 @@ USER_MAP_PATH = os.path.join(DATA_DIR, 'user_map.pkl')
 EMBEDDING_DIM = 64 # Dimension for IDs
 PROJECTION_DIM = 128 # Dimension for separate towers before concat
 
-LATENT_DIM = 512 # Final vector dimension (Increased from 256)
+LATENT_DIM = 1024 # Final vector dimension (Increased from 256)
 TEXT_EMBEDDING_DIM = 384 # Output of MiniLM
 GENOME_DIM = 1128 # Standard ML Genome
 

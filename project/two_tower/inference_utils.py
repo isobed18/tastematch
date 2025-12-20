@@ -25,9 +25,14 @@ class TwoTowerInference:
         num_items = len(self.item_map)
         
         # Load Model
+
+        # Load Model
+        # CRITICAL: Checkpoint was trained with LATENT_DIM=512, but config might say 1024.
+        # We must align with the checkpoint.
+        # Also fix bug: models.TwoTowerModel arg 2 is num_items, not num_users.
         self.model = models.TwoTowerModel(
-            num_users, num_users, # User Num is used for Embedding
-            config.EMBEDDING_DIM, config.LATENT_DIM
+            num_users, num_items, 
+            config.EMBEDDING_DIM, latent_dim=512
         )
         
         if model_path is None:

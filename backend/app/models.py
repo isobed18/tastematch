@@ -20,6 +20,7 @@ class User(Base):
     # Modelden gelen embedding vektörünü önbelleklemek istersek diye (şimdilik boş durabilir)
     embedding = Column(JSON, default=[]) 
     last_daily_feed = Column(DateTime, nullable=True) # Son öneri tarihi
+    daily_match_ml_id = Column(Integer, nullable=True) # Günün önerisi (Cache)
     
     swipes = relationship("Swipe", back_populates="user")
 

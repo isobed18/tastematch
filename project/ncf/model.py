@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import config
+from . import config
 
 class HybridNCF(nn.Module):
     def __init__(self, num_users, num_movies, genome_dim=config.GENOME_DIM, embedding_dim=config.EMBEDDING_DIM, layers=config.LAYERS, dropout=config.DROPOUT):

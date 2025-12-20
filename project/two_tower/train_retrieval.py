@@ -304,10 +304,14 @@ def train(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Two Tower Model")
-    parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
-    parser.add_argument('--batch_size', type=int, default=config.BATCH_SIZE, help='Batch size')
-    parser.add_argument('--lr', type=float, default=5e-4, help='Learning rate')
-    parser.add_argument('--patience', type=int, default=5, help='Early stopping patience')
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--batch_size", type=int, default=1024)
+    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--temp", type=float, default=0.07)
+    parser.add_argument("--latent_dim", type=int, default=128)
+    parser.add_argument("--run_name", type=str, default=None)
+    parser.add_argument("--patience", type=int, default=5)
+    parser.add_argument("--output_dir", type=str, default="runs/two_tower") 
     
     args = parser.parse_args()
     

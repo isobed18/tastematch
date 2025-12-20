@@ -1,16 +1,27 @@
+
 import pandas as pd
 import numpy as np
-from app.database import SessionLocal, engine, Base
-from app.models import Item
+import sys
 import os
 
-# DOSYA YOLLARI
-LINKS_PATH = "../project/data/ml-latest/links.csv"
-TMDB_PATH = "data/tmdb-movies.csv" 
+# Add backend to sys.path so 'app' imports work
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir)
+
+from app.database import SessionLocal, engine, Base
+from app.models import Item
+
+# DOSYA YOLLARI (Relative to backend/)
+# file is in tastematch/backend/ingest_simple.py
+# links is in tastematch/project/data/ml-latest/links.csv
+LINKS_PATH = os.path.join(current_dir, "..", "project", "data", "ml-latest", "links.csv")
+TMDB_PATH = os.path.join(current_dir, "data", "tmdb-movies.csv")
 
 def ingest_simple():
     # Temiz kurulum (Tabloları sıfırla)
+    print("Dropping all tables...")
     Base.metadata.drop_all(bind=engine)
+    print("Creating all tables...")
     Base.metadata.create_all(bind=engine)
     
     db = SessionLocal()

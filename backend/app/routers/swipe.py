@@ -34,15 +34,30 @@ def create_swipe(
         action=swipe.action
     )
     
+
+    is_daily_match = (
+        current_user.daily_match_ml_id is not None and 
+        item.ml_id == current_user.daily_match_ml_id
+    )
+    
     # Map Action to Rating (NCF Integration)
-    if swipe.action == models.SwipeAction.like:
-        new_swipe.rating = 4.0
-    elif swipe.action == models.SwipeAction.superlike:
-        new_swipe.rating = 5.0
-    elif swipe.action == models.SwipeAction.dislike:
-        new_swipe.rating = 2.0
-    elif swipe.action == "watchlist":
-        new_swipe.rating = 4.5
+    if is_daily_match:
+        print(f"[Swipe] Daily Match Interaction detected for User {current_user.id} Item {item.id} (ML: {item.ml_id})")
+        # Boosted Ratings for Daily Match (High Impact)
+        if swipe.action in [models.SwipeAction.like, models.SwipeAction.superlike, "watchlist"]:
+            new_swipe.rating = 5.0 # Max Score
+        elif swipe.action == models.SwipeAction.dislike:
+            new_swipe.rating = 0.5 # Strong Penalty (Min Score)
+    else:
+        # Standard Ratings
+        if swipe.action == models.SwipeAction.like:
+            new_swipe.rating = 4.0
+        elif swipe.action == models.SwipeAction.superlike:
+            new_swipe.rating = 5.0
+        elif swipe.action == models.SwipeAction.dislike:
+            new_swipe.rating = 2.0
+        elif swipe.action == "watchlist":
+            new_swipe.rating = 4.5
     
     db.add(new_swipe)
     db.commit()

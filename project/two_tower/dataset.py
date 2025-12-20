@@ -7,7 +7,7 @@ import random
 
 
 class TwoTowerDataset(Dataset):
-    def __init__(self, interactions_path, item_map_path, max_history=20, is_train=True):
+    def __init__(self, interactions_path, item_map_path, max_history=50, is_train=True):
         """
         interactions_path: Path to .pkl file containing list of user dicts.
         """

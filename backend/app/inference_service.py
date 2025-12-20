@@ -1,279 +1,193 @@
+import torch
+import numpy as np
+import pandas as pd
 import os
 import pickle
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from sqlalchemy.orm import Session
-from .database import SessionLocal
-from .models import Item, Swipe, SwipeAction
-
-# Paths
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-PROJECT_NCF_DIR = os.path.join(BASE_DIR, "project", "ncf")
-RUNS_DIR = os.path.join(BASE_DIR, "runs_ncf", "run_20251216_154202") # BEST MODEL
-MODEL_PATH = os.path.join(RUNS_DIR, "best_model.pth")
-GENOME_PATH = os.path.join(RUNS_DIR, "genome_matrix.npy")
-MOVIE_MAPPING_PATH = os.path.join(RUNS_DIR, "movie_mapping.pkl")
-USER_MAPPING_PATH = os.path.join(RUNS_DIR, "user_mapping.pkl")
-
-# Add NCF to path
 import sys
-sys.path.append(PROJECT_NCF_DIR)
-import config
-# DYNAMIC IMPORT to avoid issues if model.py changes
-from model import HybridNCF 
+
+
+# Proje kök dizinini yola ekle
+# backend/app/inference_service.py -> backend/app -> backend -> tastematch (root)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+# Modülleri import et
+try:
+    from project.two_tower.inference_utils import TwoTowerInference
+    from project.ncf.model import HybridNCF
+    from project.ncf import config as ncf_config
+except ImportError as e:
+    print(f"Import Error: {e}")
+    # Fallback or re-raise
+    raise e
 
 class InferenceService:
-    def __init__(self):
-        self.model = None
-        self.movie_mapping = None # tmdb_id/ml_id -> model_idx
-        self.genome_matrix = None
-        self.initialized = False
+
+    def __init__(self, model_path=None):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"Inference Service Device: {self.device}")
         
-    def load_model(self):
-        if self.initialized: return
-        print(f"Loading NCF Model from {RUNS_DIR}...")
+        # --- 1. Load Two-Tower (Retrieval) ---
+        print("Loading Two-Tower Retrieval Engine...")
+        # Load specific model if provided, else default
+        self.retrieval_engine = TwoTowerInference(model_path=model_path) 
+        
+        # --- 2. Load NCF (Ranker) ---
+        print("Loading NCF Ranking Engine...")
+        self.ranker_model, self.ncf_user_map, self.ncf_movie_map = self._load_ncf()
+        self.genome_matrix = self._load_genome()
+        
+        print("Inference Service Initialized Successfully.")
+
+
+    def _load_ncf(self):
+        """
+        En son eğitilen NCF modelini ve maplerini yükler.
+        """
+        # runs_ncf klasöründeki en son run'ı bul
+        # base_dir is root (tastematch/)
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        run_root = os.path.join(base_dir, "runs_ncf") # DIRECTLY in root
+        
+        if not os.path.exists(run_root):
+            print(f"WARNING: NCF runs directory not found at {run_root}. Ranking will be disabled.")
+            return None, {}, {}
+
+        runs = sorted([d for d in os.listdir(run_root) if d.startswith("run_")])
+        if not runs:
+            print("WARNING: No NCF training runs found. Ranking will be disabled.")
+            return None, {}, {}
+            
+        latest_run = os.path.join(run_root, runs[-1])
+        print(f"Using NCF Model from: {latest_run}")
+        
+        # Mappings Yükle
         try:
-            # Load Mappings
-            with open(MOVIE_MAPPING_PATH, 'rb') as f:
-                self.movie_mapping = pickle.load(f)
-            
-            # Need User Mapping just for num_users dimension initialization
-            with open(USER_MAPPING_PATH, 'rb') as f:
-                user_mapping = pickle.load(f)
-                num_train_users = len(user_mapping)
+            with open(os.path.join(latest_run, 'user_mapping.pkl'), 'rb') as f:
+                user_map = pickle.load(f)
+            with open(os.path.join(latest_run, 'movie_mapping.pkl'), 'rb') as f:
+                movie_map = pickle.load(f)
                 
-            # Load Genome
-            self.genome_matrix = np.load(GENOME_PATH)
-            
-            # Initialize Model
-            self.model = HybridNCF(
-                num_users=num_train_users,
-                num_movies=len(self.movie_mapping),
-                genome_dim=config.GENOME_DIM, # 1128
-                embedding_dim=config.EMBEDDING_DIM
+            # Model Başlat
+            model = HybridNCF(
+                num_users=len(user_map),
+                num_movies=len(movie_map),
+                genome_dim=ncf_config.GENOME_DIM,
+                embedding_dim=ncf_config.EMBEDDING_DIM
             )
             
-            # Load Weights
-            state_dict = torch.load(MODEL_PATH, map_location=self.device)
-            self.model.load_state_dict(state_dict)
-            self.model.to(self.device)
-            self.model.eval()
+            # Ağırlıkları Yükle
+            model_path = os.path.join(latest_run, 'best_model.pth')
+            model.load_state_dict(torch.load(model_path, map_location=self.device))
+            model.to(self.device)
+            model.eval()
             
-            # Freeze weights to be safe (we only optimize user vec)
-            for param in self.model.parameters():
-                param.requires_grad = False
-            
-            # LOAD DB IDs (Validation Set)
-            # Only recommend items that actually exist in our local DB
-            try:
-                db = SessionLocal()
-                existing_ids = db.query(Item.ml_id).filter(Item.ml_id.isnot(None)).all()
-                self.available_item_ids = set([i[0] for i in existing_ids])
-                db.close()
-                print(f"[NCF] Loaded {len(self.available_item_ids)} available items from DB.")
-            except Exception as e:
-                print(f"[NCF] Warning: Could not load DB items: {e}")
-                self.available_item_ids = set()
-                
-            self.initialized = True
-            print("NCF Model Loaded Successfully.")
+            return model, user_map, movie_map
             
         except Exception as e:
-            print(f"FATAL: NCF Model load failed: {e}")
+            print(f"ERROR loading NCF: {e}")
+            return None, {}, {}
 
-    def fold_in_user(self, liked_items_with_ratings, verbose=False):
+    def _load_genome(self):
+        # Genome matrix yükle
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        run_root = os.path.join(base_dir, "runs", "ncf") # Changed from "runs_ncf" to "runs/ncf"
+        
+        if not os.path.exists(run_root): return None
+        runs = sorted([d for d in os.listdir(run_root) if d.startswith("run_")])
+        if not runs: return None
+        
+        latest_run = os.path.join(run_root, runs[-1])
+        path = os.path.join(latest_run, 'genome_matrix.npy')
+        
+        if os.path.exists(path):
+            return np.load(path)
+        return None
+
+    def get_recommendations(self, user_id, history_items, k_final=10):
         """
-        Creates and trains a temporary user vector based on ratings.
-        liked_items_with_ratings: list of dict {'ml_id': int, 'rating': float}
+        API'nin çağıracağı ana fonksiyon.
+        user_id: Veritabanındaki gerçek User ID (int)
+        history_items: Kullanıcının beğendiği/izlediği filmlerin ID listesi [int]
         """
-        # If no ratings, return random vector
-        if not liked_items_with_ratings:
-            return torch.nn.Parameter(torch.normal(0, 0.1, size=(1, config.EMBEDDING_DIM)).to(self.device))
-
-        # 1. Prepare Data
-        movie_indices = []
-        ratings_vals = []
         
-        for item in liked_items_with_ratings:
-            mid = item['ml_id']
-            if mid in self.movie_mapping:
-                movie_indices.append(self.movie_mapping[mid])
-                ratings_vals.append(item['rating'])
-                
-        if not movie_indices:
-             return torch.nn.Parameter(torch.normal(0, 0.1, size=(1, config.EMBEDDING_DIM)).to(self.device))
-             
-        # Convert to Tensor
-        m_tensor = torch.tensor(movie_indices, dtype=torch.long).to(self.device)
-        r_tensor = torch.tensor(ratings_vals, dtype=torch.float32).to(self.device)
-        f_tensor = torch.tensor(self.genome_matrix[movie_indices], dtype=torch.float32).to(self.device)
-
-        # 2. Initialize Vector (Random Normal)
-        user_vector = torch.nn.Parameter(torch.normal(0, 0.1, size=(1, config.EMBEDDING_DIM)).to(self.device))
+        # 1. RETRIEVAL (Two-Tower)
+        # ------------------------
+        # Two-Tower, kullanıcının ID'si yoksa bile 'history_items' kullanarak
+        # içerik tabanlı (Content-Based) bir vektör oluşturur ve aday getirir.
         
-        # 3. Optimize
-        # Use Weight Decay (L2 Regularization) to prevent vector magnitude explosion
-        # This keeps predictions from saturating at 5.0
-        optimizer = optim.Adam([user_vector], lr=0.01, weight_decay=1e-3)
-        loss_fn = nn.MSELoss()
+        # Daha fazla aday çağırıyoruz ki Ranker'a eleme şansı kalsın (örn. 100)
+        candidates = self.retrieval_engine.get_recommendations(
+            user_id=user_id,
+            history_items=history_items,
+            k=100 
+        )
         
-        steps = 1000
-        
-        if verbose:
-            print(f"\n[Fold-In] Starting Optimization (Steps: {steps})")
-            print(f"[Fold-In] Initial Loss check...")
-            
-        for s in range(steps):
-            optimizer.zero_grad()
-            
-            # Manual Forward Pass reusing Model Layers
-            item_emb = self.model.movie_embedding(m_tensor)
-            
-            # Expand user vector to batch size
-            batch_user = user_vector.expand(len(r_tensor), -1)
-            
-            # Concat
-            vector = torch.cat([batch_user, item_emb, f_tensor], dim=-1)
-            
-            # MLP
-            x = self.model.mlp(vector)
-            
-            # Output
-            logits = self.model.output_layer(x).view(-1)
-            preds = torch.clamp(logits, min=config.MIN_RATING, max=config.MAX_RATING)
-            
-            loss = loss_fn(preds, r_tensor)
-            loss.backward()
-            optimizer.step()
-            
-            if verbose and (s % 10 == 0 or s == steps-1):
-                print(f"  Step {s+1}/{steps} - Loss: {loss.item():.4f}")
-        
-        if verbose:
-            print(f"[Fold-In] Final User Vector (First 5 dims): {user_vector.data[0][:5].cpu().numpy()}")
-            print(f"[Fold-In] Vector Norm: {torch.norm(user_vector).item():.4f}\n")
-            
-        return user_vector.detach()
-
-    # Updated to accept db session to avoid DetachedInstanceError in caller
-    def get_recommendations(self, user_id: int, db: Session, limit=20, verbose=False):
-        if not self.initialized: self.load_model()
-        if not self.initialized: return [], [], [] # Return empty tuple matching signature
-
-        # 1. Fetch User History (Ratings)
-        swipes = db.query(Swipe).join(Item).filter(
-            Swipe.user_id == user_id,
-            Swipe.rating.isnot(None),
-            Item.ml_id.isnot(None)
-        ).all()
-        
-        history = [{'ml_id': s.item.ml_id, 'rating': s.rating} for s in swipes]
-        
-        # ... (rest of logic uses db) ...
-        # (Fold-In logic remains same)
-        # (Predict logic remains same)
-        
-        # ... fetch items ...
-        
-        # ... logic continues ...
-
-        if verbose:
-            print(f"\n[NCF] User {user_id}: Found {len(history)} rated items in history.")
-        
-        # 2. Fold-In (Calculate User Vector)
-        user_vector = self.fold_in_user(history, verbose=verbose) # Pass verbose
-        if verbose:
-             print("[NCF] Fold-In Complete. User Vector Generated.")
-        
-        # 3. Predict for Candidates
-        # Filter watched AND filter by availability
-        watched_ids = set([h['ml_id'] for h in history])
-        all_model_ids = list(self.movie_mapping.keys())
-        
-        # Only predict for items that (1) are in DB and (2) user hasn't seen
-        candidates = []
-        if self.available_item_ids:
-            # Intersection is faster
-            # Candidates = (Model Keys) INTERSECT (DB IDs) - (Watched)
-            possible = set(all_model_ids).intersection(self.available_item_ids)
-            candidates = list(possible - watched_ids)
-        else:
-             # Fallback if DB load failed (risky)
-             candidates = [mid for mid in all_model_ids if mid not in watched_ids]
-
-        if not candidates: 
-            db.close()
+        # Eğer Two-Tower hiç aday bulamazsa (çok nadir), boş dön.
+        if not candidates:
             return []
+
+
+        # 2. RANKING (NCF)
+        # ----------------
+        
+        is_known_user = (self.ranker_model is not None) and (user_id in self.ncf_user_map)
+        print(f"[Inference] User {user_id} Known to Ranker? {is_known_user}")
+        
+        if is_known_user:
+            # Kullanıcı Biliniyor -> Hassas Sıralama Yap (Re-Ranking)
+            # Returns list of (id, score)
+            ranked_candidates = self._rank_with_ncf(user_id, candidates)
+            print(f"[Inference] Ranked {len(candidates)} candidates. Top 3: {ranked_candidates[:3]}")
+            return ranked_candidates[:k_final]
+        else:
+            # Kullanıcı Yeni -> Two-Tower sonuçlarını olduğu gibi döndür
+            print(f"[Inference] Cold Start / Unknown User. Returning Retrieval results.")
+            return [(cand, 0.0) for cand in candidates[:k_final]]
+
+    def _rank_with_ncf(self, user_id, candidates):
+        """
+        NCF modelini kullanarak adaylara 0.5 - 5.0 arası puan verir.
+        """
+        ncf_user_idx = self.ncf_user_map[user_id]
+        
+        # Adayları NCF ID'lerine çevir
+        valid_candidates = [] # (RawID, NCF_ID)
+        
+        for mid in candidates:
+            if mid in self.ncf_movie_map:
+                valid_candidates.append((mid, self.ncf_movie_map[mid]))
+        
+        print(f"[Ranker] {len(valid_candidates)}/{len(candidates)} candidates found in NCF map.")
+        
+        if not valid_candidates:
+            return [(c, 0.0) for c in candidates] # Eşleşme yoksa orijinalleri dön
             
-        print(f"[NCF] Predicting for {len(candidates)} candidates.")
+        # Batch Hazırlığı
+        n = len(valid_candidates)
+        u_tensor = torch.tensor([ncf_user_idx] * n, dtype=torch.long).to(self.device)
+        m_tensor = torch.tensor([x[1] for x in valid_candidates], dtype=torch.long).to(self.device)
         
-        # Batch Predict (Chunk if necessary, but 25k is okay)
-        c_tensor = torch.tensor([self.movie_mapping[mid] for mid in candidates], dtype=torch.long).to(self.device)
-        f_tensor = torch.tensor(self.genome_matrix[c_tensor.cpu().numpy()], dtype=torch.float32).to(self.device)
-        
+        # Genome Features
+        if self.genome_matrix is not None:
+            # Numpy -> Tensor
+            features = torch.tensor(self.genome_matrix[m_tensor.cpu().numpy()], dtype=torch.float32).to(self.device)
+        else:
+            # Fallback if genome missing (should not happen in prod)
+            features = torch.zeros((n, ncf_config.GENOME_DIM), dtype=torch.float32).to(self.device)
+            
+        # Tahmin
         with torch.no_grad():
-             item_emb = self.model.movie_embedding(c_tensor)
-             batch_user = user_vector.expand(len(c_tensor), -1)
-             vector = torch.cat([batch_user, item_emb, f_tensor], dim=-1)
-             x = self.model.mlp(vector)
-             logits = self.model.output_layer(x).view(-1)
-             preds = torch.clamp(logits, min=config.MIN_RATING, max=config.MAX_RATING)
-        
-        # 4. Rank
-        scores = preds.cpu().numpy()
-        top_indices = scores.argsort()[::-1][:limit]
-        
-        # CAST TO INT to avoid np.int64 issues in SQL
-        top_ml_ids = [int(candidates[i]) for i in top_indices]
-        top_scores = {int(candidates[i]): float(scores[i]) for i in top_indices}
-        
-        if verbose:
-            print(f"[NCF] Top 5 Candidate ML IDs: {top_ml_ids[:5]}")
+            scores = self.ranker_model(u_tensor, m_tensor, features)
+            scores = scores.cpu().numpy()
             
-            # Print worst 5 too
-            worst_indices = scores.argsort()[:5]
-            worst_ml_ids = [int(candidates[i]) for i in worst_indices]
-            worst_scores = [float(scores[i]) for i in worst_indices]
-            print(f"[NCF] Worst 5 Candidates: {list(zip(worst_ml_ids, worst_scores))}")
+        # Skorlara göre sırala
+        scored_list = []
+        for i in range(n):
+            raw_id = valid_candidates[i][0]
+            score = float(scores[i]) # Convert to python float
+            scored_list.append((raw_id, score))
+            
+        # Puanı yüksek olan en başa
+        scored_list.sort(key=lambda x: x[1], reverse=True)
         
-        # 5. Fetch Items
-        top_items = db.query(Item).filter(Item.ml_id.in_(top_ml_ids)).all()
-        
-        # Sort Top
-        result_top = []
-        item_map_top = {i.ml_id: i for i in top_items}
-        for mid in top_ml_ids:
-            if mid in item_map_top:
-                it = item_map_top[mid]
-                it.score = top_scores[mid]
-                result_top.append(it)
-
-        # Fetch Bottom Items
-        # Get worst indices
-        worst_indices = scores.argsort()[:limit] # Get same amount as limit to be safe
-        worst_ml_ids = [int(candidates[i]) for i in worst_indices]
-        worst_scores = {int(candidates[i]): float(scores[i]) for i in worst_indices}
-        
-        bottom_items = db.query(Item).filter(Item.ml_id.in_(worst_ml_ids)).all()
-        result_bottom = []
-        item_map_bottom = {i.ml_id: i for i in bottom_items}
-        for mid in worst_ml_ids:
-             if mid in item_map_bottom:
-                 it = item_map_bottom[mid]
-                 it.score = worst_scores[mid]
-                 result_bottom.append(it)
-
-        if verbose:
-            print(f"[NCF] Top Recommendations for User {user_id}:")
-            for i, item in enumerate(result_top[:5]): # Show top 5
-                 print(f"  {i+1}. {item.title} (Score: {item.score:.2f})")
-             
-        # Return Top, Bottom, and Vector
-        vector_list = user_vector.detach().view(-1).cpu().numpy().tolist()
-        
-        return result_top, result_bottom, vector_list
-
-inference_engine = InferenceService()
+        return scored_list

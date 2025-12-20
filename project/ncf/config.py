@@ -7,8 +7,10 @@ RATINGS_PATH = os.path.join(DATA_DIR, 'ratings.csv')
 MOVIES_PATH = os.path.join(DATA_DIR, 'movies.csv')
 GENOME_SCORES_PATH = os.path.join(DATA_DIR, 'genome-scores.csv')
 
-# Output
-OUTPUT_DIR = 'runs_ncf'
+
+# Paths
+DATA_PATH = "data/ml-latest"
+MODEL_DIR = "runs/ncf/"
 
 # --- HYPERPARAMETERS ---
 EMBEDDING_DIM = 64

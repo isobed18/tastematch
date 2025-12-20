@@ -1,6 +1,8 @@
-# TasteMatch 🎬
+# TasteMatch - AI Powered Movie Recommender
 
-TasteMatch is a Tinder-like movie recommendation application that learns your taste as you swipe. It uses advanced machine learning models (SVD, Neural Collaborative Filtering) to provide personalized recommendations.
+**[🇹🇷 Sistem Mimarisi ve Detaylı Rapor İçin Tıklayınız (System Architecture Report)](SYSTEM_ARCHITECTURE_TR.md)**
+
+TasteMatch is a hybrid recommendation engine application that learns your taste as you swipe. It uses advanced machine learning models (SVD, Neural Collaborative Filtering) to provide personalized recommendations.
 
 ## 🚀 Features
 

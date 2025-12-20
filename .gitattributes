@@ -7,3 +7,5 @@
 **/genome_matrix.npy filter=lfs diff=lfs merge=lfs -text
 **/user_mapping.pkl filter=lfs diff=lfs merge=lfs -text
 **/movie_mapping.pkl filter=lfs diff=lfs merge=lfs -text
+runs_ncf/run_20251216_154202/*.pth filter=lfs diff=lfs merge=lfs -text
+runs_tt/run_20251217_012150/*.pth filter=lfs diff=lfs merge=lfs -text
