@@ -45,8 +45,9 @@ class InferenceService:
         """
         # runs_ncf klasöründeki en son run'ı bul
         # base_dir is root (tastematch/)
+        # base_dir is root (tastematch/)
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        run_root = os.path.join(base_dir, "runs_ncf") # DIRECTLY in root
+        run_root = os.path.join(base_dir, "runs", "ncf") # DIRECTLY in root
         
         if not os.path.exists(run_root):
             print(f"WARNING: NCF runs directory not found at {run_root}. Ranking will be disabled.")
