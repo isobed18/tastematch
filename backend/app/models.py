@@ -26,8 +26,13 @@ class User(Base):
     gender = Column(String, nullable=True) # male, female, other
     interested_in = Column(String, nullable=True) # male, female, both, etc.
     location_city = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
     bio = Column(String, nullable=True)
     last_active = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    # Auto-Generated Persona Tags (e.g. ["Sci-Fi Lover", "Indie Fan"])
+    tags = Column(JSON, default=[]) 
 
     last_daily_feed = Column(DateTime, nullable=True) # Son öneri tarihi
     daily_match_ml_id = Column(Integer, nullable=True) # Günün önerisi (Cache)
@@ -74,3 +79,30 @@ class Swipe(Base):
 
     user = relationship("User", back_populates="swipes")
     item = relationship("Item", back_populates="swipes")
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    receiver_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(String)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    status = Column(String, default="sent") # sent, delivered, read
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    sender = relationship("User", foreign_keys=[sender_id])
+    receiver = relationship("User", foreign_keys=[receiver_id])
+
+class UserInteraction(Base):
+    __tablename__ = "user_interactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    liker_id = Column(Integer, ForeignKey("users.id"), index=True)
+    liked_id = Column(Integer, ForeignKey("users.id"), index=True)
+    action = Column(String) # 'like', 'pass'
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    # Relationships not strictly needed for basic logic but good for future
+    liker = relationship("User", foreign_keys=[liker_id])
+    liked = relationship("User", foreign_keys=[liked_id])

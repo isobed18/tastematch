@@ -54,3 +54,23 @@ class UserMatchOut(BaseModel):
     user_id: int
     username: str
     similarity: float
+    common_movies: List[str] = []
+    shared_genres: List[str] = []
+    tags: List[str] = []
+    bio: Optional[str] = None
+    match_reason: Optional[str] = None # Generated Icebreaker text
+
+class UserSwipe(BaseModel):
+    liked_user_id: int
+    action: str # "like" or "pass"
+
+class MessageOut(BaseModel):
+    id: int
+    sender_id: int
+    receiver_id: int
+    content: str
+    timestamp: Any 
+    status: str
+
+    class Config:
+        orm_mode = True
