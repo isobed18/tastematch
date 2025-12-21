@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Button, Alert, TouchableOpacity, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AuthContext } from '../../src/context/AuthContext';
-import { getFeed, swipeItem, getDailyFeed, getSocialMatches } from '../../src/services/api';
+import { getFeed, swipeItem, getDailyFeed } from '../../src/services/api';
 import SwipeCard from '../../src/components/SwipeCard';
 
 export default function HomeScreen() {
@@ -18,9 +18,6 @@ export default function HomeScreen() {
   const [dailyItem, setDailyItem] = useState(null);
   const [matchLoading, setMatchLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0); // 0-3
-
-  // Social
-  const [socialMatches, setSocialMatches] = useState([]);
 
   const router = useRouter();
 
@@ -86,24 +83,6 @@ export default function HomeScreen() {
     }
   };
 
-  // 3. SOCIAL MATCHES
-  const fetchSocial = async () => {
-    setLoading(true);
-    try {
-      // Use api.js service
-      const data = await getSocialMatches();
-
-      if (data) {
-        setSocialMatches(data);
-        setViewMode('social');
-      }
-    } catch (e) {
-      console.error("Social Match Error:", e);
-      Alert.alert('Error', `Request failed: ${e.response?.status} - ${e.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSwipe = async (direction, item) => {
     setFeed((prev) => prev.filter((i) => i.id !== item.id));
@@ -155,11 +134,6 @@ export default function HomeScreen() {
           <TouchableOpacity style={[styles.mainButton, styles.goldButton]} onPress={fetchDailyRecommendation}>
             <Text style={styles.buttonText}>🏆 Get Daily Recommendation</Text>
             <Text style={[styles.subButtonText, { color: 'black' }]}>Your single best movie for today</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.mainButton, styles.secondaryButton]} onPress={fetchSocial}>
-            <Text style={styles.buttonText}>👥 Find My Soulmate</Text>
-            <Text style={styles.subButtonText}>Match with others</Text>
           </TouchableOpacity>
 
           {loading && <ActivityIndicator size="large" color="#0a7ea4" style={{ marginTop: 20 }} />}
@@ -218,30 +192,6 @@ export default function HomeScreen() {
     )
   }
 
-  // --- SOCIAL ---
-  if (viewMode === 'social') {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Button title="< Home" onPress={() => setViewMode('home')} />
-          <Text style={styles.headerTitle}>Soulmates</Text>
-          <View style={{ width: 50 }} />
-        </View>
-        <ScrollView contentContainerStyle={styles.list}>
-          {socialMatches.length === 0 ? <Text style={styles.text}>No soulmates found yet. Keep training!</Text> : null}
-          {socialMatches.map((user, idx) => (
-            <View key={idx} style={styles.userCard}>
-              <View>
-                <Text style={styles.username}>{user.username}</Text>
-                <Text style={{ color: '#666' }}>ID: {user.user_id}</Text>
-              </View>
-              <Text style={styles.score}>{(user.similarity * 100).toFixed(0)}% Match</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
-    );
-  }
 
   return null;
 }
