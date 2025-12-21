@@ -118,8 +118,18 @@ export const getDailyFeed = async () => {
     return response.data;
 };
 
+export const updateProfile = async (data) => {
+    const response = await api.patch('/auth/profile', data);
+    return response.data;
+};
+
 export const getSocialMatches = async () => {
     const response = await api.get('/social/matches');
+    return response.data;
+};
+
+export const refreshUserVector = async () => {
+    const response = await api.post('/social/refresh_vector');
     return response.data;
 };
 

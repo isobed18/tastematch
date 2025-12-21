@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useContext, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Button, FlatList, Image, ScrollView, RefreshControl, Modal, TouchableOpacity, Dimensions } from 'react-native';
 import { AuthContext } from '../../src/context/AuthContext';
@@ -7,10 +7,11 @@ import { getProfile } from '../../src/services/api';
 const { width, height } = Dimensions.get('window');
 
 export default function ProfileScreen() {
+    const router = useRouter();
     const { logout } = useContext(AuthContext);
-    const [profile, setProfile] = useState(null);
+    const [profile, setProfile] = useState<any>(null);
     const [refreshing, setRefreshing] = useState(false);
-    const [selectedItem, setSelectedItem] = useState(null);
+    const [selectedItem, setSelectedItem] = useState<any>(null);
 
     useFocusEffect(
         useCallback(() => {
@@ -33,13 +34,13 @@ export default function ProfileScreen() {
         setRefreshing(false);
     };
 
-    const getImageUrl = (item) => {
+    const getImageUrl = (item: any) => {
         if (item.image_url && item.image_url.startsWith('http')) return item.image_url;
         if (item.poster_path) return `https://image.tmdb.org/t/p/w200${item.poster_path}`;
         return 'https://via.placeholder.com/200x300';
     };
 
-    const renderItem = ({ item }) => (
+    const renderItem = ({ item }: { item: any }) => (
         <TouchableOpacity style={styles.item} onPress={() => setSelectedItem(item)}>
             <Image source={{ uri: getImageUrl(item) }} style={styles.image} />
             <Text numberOfLines={1} style={styles.itemTitle}>{item.title}</Text>
@@ -57,9 +58,17 @@ export default function ProfileScreen() {
                 }
             >
                 <View style={styles.header}>
-                    <Text style={styles.username}>@{profile.username}</Text>
-                    <Button title="Logout" onPress={logout} color="red" />
+                    <View>
+                        <Text style={styles.username}>@{profile.username}</Text>
+                        {profile.location_city ? <Text style={styles.location}>📍 {profile.location_city}</Text> : null}
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <Button title="Edit" onPress={() => router.push('/profile/edit')} color="#FF3366" />
+                        <Button title="Logout" onPress={logout} color="red" />
+                    </View>
                 </View>
+
+                {profile.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
 
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>🔥 Super Likes</Text>
@@ -129,7 +138,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: '#121212',
         padding: 20,
     },
     header: {
@@ -142,6 +151,17 @@ const styles = StyleSheet.create({
     username: {
         fontSize: 24,
         fontWeight: 'bold',
+        color: 'white',
+    },
+    location: {
+        color: '#888',
+        marginTop: 4
+    },
+    bio: {
+        color: '#ccc',
+        fontStyle: 'italic',
+        marginBottom: 30,
+        fontSize: 16
     },
     section: {
         marginBottom: 30,
@@ -150,6 +170,7 @@ const styles = StyleSheet.create({
         fontSize: 20,
         fontWeight: 'bold',
         marginBottom: 10,
+        color: 'white'
     },
     emptyText: {
         color: '#888',
