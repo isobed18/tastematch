@@ -103,8 +103,44 @@ def get_profile(
         models.Swipe.action == models.SwipeAction.superlike
     ).all()
     
+    # Calculate age if birth_date exists (optional enhancement for later)
+    
     return {
         "username": current_user.username,
+        "birth_date": current_user.birth_date,
+        "gender": current_user.gender,
+        "location_city": current_user.location_city,
+        "bio": current_user.bio,
         "watchlist": watchlist,
         "superlikes": superlikes
+    }
+
+@router.patch("/profile")
+def update_profile(
+    profile_data: schemas.UserUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    # Update fields if provided
+    if profile_data.birth_date is not None:
+        current_user.birth_date = profile_data.birth_date
+    if profile_data.gender is not None:
+        current_user.gender = profile_data.gender
+    if profile_data.interested_in is not None:
+        current_user.interested_in = profile_data.interested_in
+    if profile_data.location_city is not None:
+        current_user.location_city = profile_data.location_city
+    if profile_data.bio is not None:
+        current_user.bio = profile_data.bio
+        
+    db.commit()
+    db.refresh(current_user)
+    
+    return {
+        "message": "Profile updated successfully",
+        "user": {
+            "username": current_user.username,
+            "bio": current_user.bio,
+            "location": current_user.location_city
+        }
     }

@@ -16,6 +16,13 @@ class UserCreate(BaseModel):
     username: str
     password: str
 
+class UserUpdate(BaseModel):
+    birth_date: Optional[str] = None
+    gender: Optional[str] = None
+    interested_in: Optional[str] = None
+    location_city: Optional[str] = None
+    bio: Optional[str] = None
+
 class Token(BaseModel):
     access_token: str
     refresh_token: str

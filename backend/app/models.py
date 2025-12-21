@@ -18,7 +18,17 @@ class User(Base):
     hashed_password = Column(String)
     
     # Modelden gelen embedding vektörünü önbelleklemek istersek diye (şimdilik boş durabilir)
-    embedding = Column(JSON, default=[]) 
+    embedding = Column(JSON, default=[]) # Soul Vector (Taste Vector)
+    embedding_version = Column(Integer, default=0)
+    
+    # Social Profile Fields
+    birth_date = Column(String, nullable=True) # YYYY-MM-DD
+    gender = Column(String, nullable=True) # male, female, other
+    interested_in = Column(String, nullable=True) # male, female, both, etc.
+    location_city = Column(String, nullable=True)
+    bio = Column(String, nullable=True)
+    last_active = Column(DateTime, default=datetime.datetime.utcnow)
+
     last_daily_feed = Column(DateTime, nullable=True) # Son öneri tarihi
     daily_match_ml_id = Column(Integer, nullable=True) # Günün önerisi (Cache)
     
