@@ -25,10 +25,10 @@ class PairwiseRankingDataset(Dataset):
     def __getitem__(self, idx):
         return self.samples[idx]
 
-def generate_ranking_data(inference_engine, train_interactions_path, num_negatives=4):
+def generate_ranking_data(inference_engine, train_interactions_path, num_negatives=4, batch_size_gen=512):
     """
     Generate training data for ranker.
-    Uses Retrieval Model to find Hard Negatives.
+    Uses Retrieval Model to find Hard Negatives (Batched Version).
     """
     print("Generating Ranking Data (Hard Negatives)...")
     ranking_samples = []
@@ -36,84 +36,115 @@ def generate_ranking_data(inference_engine, train_interactions_path, num_negativ
     with open(train_interactions_path, 'rb') as f:
         all_users = pickle.load(f)
         
-    # Limit for demo speed if needed, but intended for full training
-    # all_users = all_users[:5000] 
-
     inference_engine.index_items()
     
-    for user_data in tqdm(all_users, desc="Generating Candidates"):
-        user_idx = user_data['user_idx']
-        events = user_data['events'] # (item, weight, ts)
+    # Filter valid users first to avoid complexity in batch loop
+    valid_users = []
+    for u in all_users:
+        if len(u['events']) >= 5:
+             # Just basic filter, history splitting logic applied inside loop
+             valid_users.append(u)
+             
+    print(f"Processing {len(valid_users)} valid users for training data...")
+    
+    # Process in Batches
+    for i in tqdm(range(0, len(valid_users), batch_size_gen), desc="Generating Candidates (Batched)"):
+        batch_users = valid_users[i : i + batch_size_gen]
         
-        if len(events) < 5:
+        # Prepare Batch Tensors
+        u_indices = []
+        h_indices_list = []
+        h_weights_list = []
+        
+        user_meta_list = [] # Store metadata to process results later
+        
+        for user_data in batch_users:
+            user_idx = user_data['user_idx']
+            events = user_data['events']
+            
+            split = int(len(events) * 0.7)
+            history_events = events[:split]
+            target_events = events[split:]
+            
+            if not target_events:
+                 continue
+                 
+            # Extract history (Positive only)
+            hist_items_pos = [e[0] for e in history_events if e[1] >= 1.0]
+            if not hist_items_pos:
+                hist_items_pos = [0] # Padding if empty but valid?
+            
+            u_indices.append(user_idx)
+            h_indices_list.append(hist_items_pos)
+            h_weights_list.append([1.0] * len(hist_items_pos))
+            
+            user_meta_list.append({
+                'user_idx': user_idx,
+                'target_events': target_events
+            })
+            
+        if not u_indices:
             continue
             
-        # Split History/Target for Ranker Training
-        # We pretend the last 30% of TRAIN events are the 'future' for the ranker
-        split = int(len(events) * 0.7)
-        history_events = events[:split]
-        target_events = events[split:]
+        # Pad Sequences
+        max_len = max([len(h) for h in h_indices_list])
+        h_idx_padded = np.zeros((len(u_indices), max_len), dtype=int)
+        h_w_padded = np.zeros((len(u_indices), max_len), dtype=float)
+        h_mask_padded = np.zeros((len(u_indices), max_len), dtype=float)
         
-        if not target_events:
-            continue
+        for idx, (h, w) in enumerate(zip(h_indices_list, h_weights_list)):
+            l = len(h)
+            h_idx_padded[idx, :l] = h
+            h_w_padded[idx, :l] = w
+            h_mask_padded[idx, :l] = 1.0
             
-        # 1. Build User Vector from History
-        # inference_utils expects Raw IDs usually, but we have internal indices here.
-        # We need to bridge this. Ideally, inference_utils should support internal indices.
-        # We will assume we can pass internal indices if we bypass the map lookups.
+        # To Tensor
+        u_idx_t = torch.tensor(u_indices, device=inference_engine.device)
+        h_idx_t = torch.tensor(h_idx_padded, device=inference_engine.device, dtype=torch.long)
+        h_w_t = torch.tensor(h_w_padded, device=inference_engine.device, dtype=torch.float)
+        h_mask_t = torch.tensor(h_mask_padded, device=inference_engine.device, dtype=torch.float)
         
-        # Extract history item indices
-        hist_items = [e[0] for e in history_events]
-        # Only use Positive/Like items for history generation (ignore dislikes)
-        # Assuming weights: 2.0 (Super), 1.0 (Like), 0.5 (Dislike)
-        # We filter >= 1.0 for history
-        hist_items_pos = [e[0] for e in history_events if e[1] >= 1.0]
-        
-        if not hist_items_pos:
-            continue
-
-        # Get Candidates (Retrieval Stage)
-        # We manually call the model's retrieval logic to get internal indices directly
-        k = 50
+        # Batch Inference
         with torch.no_grad():
-            # Create tensors
-            u_idx_t = torch.tensor([user_idx], device=inference_engine.device)
-            h_idx_t = torch.tensor([hist_items_pos], device=inference_engine.device)
-            h_w_t = torch.tensor([[1.0]*len(hist_items_pos)], device=inference_engine.device) # Simple avg
-            h_mask_t = torch.ones_like(h_idx_t)
+            user_vecs = inference_engine.model.user_tower(u_idx_t, h_idx_t, h_w_t, h_mask_t) # [B, Dim]
+            # Dot Product with ALL Items
+            # [B, Dim] x [NumItems, Dim]^T = [B, NumItems]
+            scores = torch.matmul(user_vecs, inference_engine.item_embeddings.T)
             
-            user_vec = inference_engine.model.user_tower(u_idx_t, h_idx_t, h_w_t, h_mask_t)
-            scores = torch.matmul(user_vec, inference_engine.item_embeddings.T).squeeze(0)
-            top_scores, top_indices = torch.topk(scores, k)
-            candidates = top_indices.cpu().numpy().tolist()
+            # Top K
+            top_scores, top_indices = torch.topk(scores, k=50, dim=1)
+            candidates_batch = top_indices.cpu().numpy() # [B, 50]
+            user_vecs_cpu = user_vecs.cpu().numpy() # [B, Dim]
+            
+        # Process Results
+        # Be careful: user_meta_list matches indices of batch result IF we didn't skip any inside logic.
+        # We collected u_indices aligned with user_meta_list. So i-th output corresponds to i-th meta.
+        
+        for j, meta in enumerate(user_meta_list):
+            user_idx = meta['user_idx']
+            target_events = meta['target_events']
+            
+            candidates = candidates_batch[j]
+            user_vec = user_vecs_cpu[j]
+            
+            # Identify Hard Negatives
+            target_item_ids = {e[0] for e in target_events if e[1] >= 1.0}
+            hard_negatives = [c for c in candidates if c not in target_item_ids]
+            
+            if not hard_negatives: continue
+            
+            for pos_item, weight, _ in target_events:
+                 if weight < 1.0: continue
+                 curr_negs = random.sample(hard_negatives, min(len(hard_negatives), num_negatives))
+                 for neg_item in curr_negs:
+                     ranking_samples.append({
+                        'user_idx': user_idx,
+                        'pos_item': pos_item,
+                        'neg_item': neg_item,
+                        'weight': weight,
+                        'user_vec': user_vec
+                     })
 
-        # 2. Labeling
-        target_items = {e[0] for e in target_events if e[1] >= 1.0} # Only predict positives
-        
-        # Create Pairs: (User, Pos, Neg)
-        # Pos: From Target Items
-        # Neg: From Candidates (Hard Negative) if not in Target
-        
-        hard_negatives = [c for c in candidates if c not in target_items]
-        
-        if not hard_negatives:
-            continue
-            
-        for pos_item, weight, _ in target_events:
-            if weight < 1.0: continue # Skip dislikes as positive targets
-            
-            # Sample Negatives
-            curr_negs = random.sample(hard_negatives, min(len(hard_negatives), num_negatives))
-            
-            for neg_item in curr_negs:
-                ranking_samples.append({
-                    'user_idx': user_idx,
-                    'pos_item': pos_item,
-                    'neg_item': neg_item,
-                    'weight': weight, # Higher weight for Superlike pairs
-                    'user_vec': user_vec.cpu().numpy()[0] # Cache User Vec
-                })
-                
     return ranking_samples
 
 def train_ranker():
@@ -156,8 +187,11 @@ def train_ranker():
     dataloader = DataLoader(dataset, batch_size=1024, shuffle=True)
     
     # 4. Model
-    # Input Dim = EmbeddingDim(256) * 4 + Features
-    ranker = ranking_models.RankerModel(embedding_dim=config.LATENT_DIM).to(device)
+    # Input Dim = EmbeddingDim * 4 + Features
+    actual_embedding_dim = item_vectors.shape[1]
+    print(f"Initializing Ranker with Embedding Dim: {actual_embedding_dim}")
+    
+    ranker = ranking_models.RankerModel(embedding_dim=actual_embedding_dim).to(device)
     optimizer = optim.Adam(ranker.parameters(), lr=1e-3)
     
     # 5. Training Loop

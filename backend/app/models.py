@@ -105,4 +105,23 @@ class UserInteraction(Base):
     
     # Relationships not strictly needed for basic logic but good for future
     liker = relationship("User", foreign_keys=[liker_id])
+    liker = relationship("User", foreign_keys=[liker_id])
     liked = relationship("User", foreign_keys=[liked_id])
+
+class BlockedUser(Base):
+    __tablename__ = "blocked_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    blocker_id = Column(Integer, ForeignKey("users.id"), index=True)
+    blocked_id = Column(Integer, ForeignKey("users.id"), index=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reporter_id = Column(Integer, ForeignKey("users.id"))
+    reported_id = Column(Integer, ForeignKey("users.id"))
+    reason = Column(String) # spam, harassment, inappropriate, other
+    details = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)

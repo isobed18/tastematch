@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Animated, ActionSheetIOS, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import api, { getProfile } from '../../src/services/api';
+import api, { getProfile, blockUser, reportUser, getDateRecommendations } from '../../src/services/api';
+import ProfileViewerModal from '../../src/components/ProfileViewerModal';
 
 // WS URL: Replace http with ws and add endpoint
 const getWsUrl = (apiUrl: string) => {
-    return apiUrl.replace('http', 'ws') + '/chat/ws';
+    return apiUrl.includes('http') ? apiUrl.replace('http', 'ws') + '/chat/ws' : apiUrl.replace('https', 'wss') + '/chat/ws';
 };
 
 export default function ChatScreen() {
@@ -30,9 +31,12 @@ export default function ChatScreen() {
     const typingTimeoutRef = useRef<any>(null);
     const reconnectTimeout = useRef<any>(null);
 
-
     // Fade animation for typing indicator
     const fadeAnim = useRef(new Animated.Value(0)).current;
+
+    // Safety Features
+    const [profileModalVisible, setProfileModalVisible] = useState(false);
+    const [isBlocked, setIsBlocked] = useState(false); // To disable input if blocked
 
     useEffect(() => {
         if (isTyping) {
@@ -159,14 +163,12 @@ export default function ChatScreen() {
     };
 
     const handleInitialMessage = (userId: number) => {
-        console.log("Checking Initial Message:", initialMessage, "Sent:", initialMessageSent.current);
+        // console.log("Checking Initial Message:", initialMessage, "Sent:", initialMessageSent.current);
         if (initialMessage && !initialMessageSent.current) {
             const content = Array.isArray(initialMessage) ? initialMessage[0] : initialMessage;
-            console.log("Sending Initial Message:", content);
+            // console.log("Sending Initial Message:", content);
             sendMessage(content, userId);
             initialMessageSent.current = true;
-        } else {
-            console.log("No initial message to send or already sent.");
         }
     };
 
@@ -217,8 +219,7 @@ export default function ChatScreen() {
 
                 if (prev.some(m => m.id === msg.id)) return prev;
 
-                // If it's a new message from THEM, mark it as read immediately if we are strictly watching
-                // (In a real app, check if app is foregrounded)
+                // If it's a new message from THEM, mark it as read immediately
                 if (isFromThem) {
                     sendReadReceipt([msg.id]);
                 }
@@ -309,20 +310,134 @@ export default function ChatScreen() {
         }
     };
 
+    const handleConcierge = async () => {
+        try {
+            const recs = await getDateRecommendations(Number(id));
+            if (recs && recs.length > 0) {
+                const item = recs[0]; // Top Pick
+                Alert.alert(
+                    "Concierge Suggestion ✨",
+                    `Why not watch "${item.title}" together? \n\nIt matches both your tastes!`,
+                    [
+                        { text: "Great Idea!", onPress: () => sendMessage(`Hey! The Concierge suggested we watch "${item.title}". What do you think?`) },
+                        { text: "Maybe later", style: "cancel" }
+                    ]
+                );
+            } else {
+                Alert.alert("Concierge", "Needs more data to find a perfect match for both of you!");
+            }
+        } catch (e) {
+            Alert.alert("Error", "Concierge is sleeping right now.");
+        }
+    };
+
+    const onOpenMenu = () => {
+        if (Platform.OS === 'ios') {
+            ActionSheetIOS.showActionSheetWithOptions(
+                {
+                    options: ['View Profile', 'Report User', 'Block User', 'Cancel'],
+                    cancelButtonIndex: 3,
+                    destructiveButtonIndex: 2,
+                },
+                (buttonIndex) => {
+                    handleMenuAction(buttonIndex);
+                }
+            );
+        } else {
+            Alert.alert(
+                "Options",
+                "Choose an action",
+                [
+                    { text: "View Profile", onPress: () => handleMenuAction(0) },
+                    { text: "Report User", onPress: () => handleMenuAction(1) },
+                    { text: "Block User", onPress: () => handleMenuAction(2) },
+                    { text: "Cancel", style: "cancel" }
+                ]
+            );
+        }
+    };
+
+    const handleMenuAction = (index: number) => {
+        if (index === 0) {
+            setProfileModalVisible(true);
+        } else if (index === 1) {
+            promptReport();
+        } else if (index === 2) {
+            confirmBlock();
+        }
+    };
+
+    const promptReport = () => {
+        if (Platform.OS === 'ios') {
+            Alert.prompt(
+                "Report User",
+                "Please enter a reason for reporting this user:",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                        text: "Submit",
+                        onPress: (reason) => submitReport(reason)
+                    }
+                ],
+                "plain-text"
+            );
+        } else {
+            // Android prompt workaround or simple alert
+            // For simplicity in MVP, generic report
+            Alert.alert(
+                "Report User",
+                "Report this user for inappropriate behavior?",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Report", onPress: () => submitReport("Inappropriate behavior (Android generic)") }
+                ]
+            )
+        }
+    };
+
+    const submitReport = async (reason: string | undefined) => {
+        if (reason) {
+            try {
+                await reportUser(Number(id), reason, "Reported from chat");
+                Alert.alert("Success", "User has been reported. We will review this shortly.");
+            } catch (e) {
+                Alert.alert("Error", "Failed to submit report.");
+            }
+        }
+    };
+
+    const confirmBlock = () => {
+        Alert.alert(
+            "Block User?",
+            "You will no longer receive messages from this user. This action cannot be easily undone.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Block",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            await blockUser(Number(id));
+                            setIsBlocked(true);
+                            Alert.alert("Blocked", "User has been blocked.");
+                            router.back();
+                        } catch (e) {
+                            Alert.alert("Error", "Failed to block user.");
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     const renderStatusIcon = (item: any) => {
         if (item.sender_id !== myId) return null;
         if (item.pending) return <Ionicons name="time-outline" size={14} color="#ccc" />;
 
-        // Simplified Status:
-        // Pending: Clock
-        // Sent/Delivered: Single Grey Check
-        // Read: Single Blue Check
-
         if (item.status === 'read') {
-            return <Ionicons name="checkmark" size={16} color="#34B7F1" />;
+            return <Ionicons name="checkmark" size={16} color="#34B7F1" />; // Blue Tick
         } else {
-            // Sent or Delivered -> Single Grey
-            return <Ionicons name="checkmark" size={16} color="#ccc" />;
+            return <Ionicons name="checkmark" size={16} color="#ccc" />; // Grey Tick
         }
     };
 
@@ -372,10 +487,19 @@ export default function ChatScreen() {
                         )}
                     </View>
                 </View>
-                <TouchableOpacity style={styles.menuBtn}>
+                <TouchableOpacity style={styles.menuBtn} onPress={handleConcierge}>
+                    <Ionicons name="sparkles" size={24} color="#FFD700" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuBtn} onPress={onOpenMenu}>
                     <Ionicons name="ellipsis-vertical" size={24} color="#333" />
                 </TouchableOpacity>
             </View>
+
+            <ProfileViewerModal
+                visible={profileModalVisible}
+                userId={Number(id)}
+                onClose={() => setProfileModalVisible(false)}
+            />
 
             <FlatList
                 ref={flatListRef}
@@ -387,16 +511,24 @@ export default function ChatScreen() {
             />
 
             <View style={styles.inputContainer}>
-                <TextInput
-                    style={styles.input}
-                    placeholder="Type a message..."
-                    value={inputText}
-                    onChangeText={handleInputTextChange}
-                    multiline
-                />
-                <TouchableOpacity style={styles.sendBtn} onPress={() => sendMessage()}>
-                    <Ionicons name="send" size={20} color="#fff" />
-                </TouchableOpacity>
+                {isBlocked ? (
+                    <Text style={{ color: '#999', padding: 10, fontStyle: 'italic', width: '100%', textAlign: 'center' }}>
+                        You have blocked this user.
+                    </Text>
+                ) : (
+                    <>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Type a message..."
+                            value={inputText}
+                            onChangeText={handleInputTextChange}
+                            multiline
+                        />
+                        <TouchableOpacity style={styles.sendBtn} onPress={() => sendMessage()}>
+                            <Ionicons name="send" size={20} color="#fff" />
+                        </TouchableOpacity>
+                    </>
+                )}
             </View>
         </KeyboardAvoidingView>
     );

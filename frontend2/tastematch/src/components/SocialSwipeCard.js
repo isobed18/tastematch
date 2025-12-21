@@ -74,6 +74,17 @@ const SocialSwipeCard = ({ item, onSwipeLeft, onSwipeRight }) => {
                         <Text style={styles.location}>📍 {item.location_city}</Text>
                     )}
 
+                    {/* TAGS SECTION */}
+                    {item.tags && item.tags.length > 0 && (
+                        <View style={styles.tagContainer}>
+                            {item.tags.map((tag, index) => (
+                                <View key={index} style={styles.tagBadge}>
+                                    <Text style={styles.tagText}>{tag}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    )}
+
                     <View style={styles.divider} />
 
                     {/* ICEBREAKER SECTION */}

@@ -14,6 +14,9 @@ from app.models import Item
 # DOSYA YOLLARI (Relative to backend/)
 # file is in tastematch/backend/ingest_simple.py
 # links is in tastematch/project/data/ml-latest/links.csv
+# tmdb is in tastematch/backend/data/tmdb-movies.csv (assuming)
+
+# Check assuming we run from backend root
 LINKS_PATH = os.path.join(current_dir, "..", "project", "data", "ml-latest", "links.csv")
 TMDB_PATH = os.path.join(current_dir, "data", "tmdb-movies.csv")
 
@@ -57,11 +60,12 @@ def ingest_simple():
     # Aynı ml_id'ye sahip birden fazla satır varsa ilkini tut, diğerlerini at.
     movies_df = movies_df.drop_duplicates(subset=['ml_id'])
     
-    # Popülerliğe göre sırala, ilk 25.000'i al
+    # Popülerliğe göre sırala (Opsiyonel, veri tabanına giriş sırası için)
     if 'popularity' in movies_df.columns:
         movies_df = movies_df.sort_values(by='popularity', ascending=False)
     
-    movies_df = movies_df.head(25000)
+    # 25,000 LIMIT KALDIRILDI - Tüm eşleşen filmleri ekle
+    # movies_df = movies_df.head(25000) 
     print(f"Veritabanına yazılacak net film sayısı: {len(movies_df)}")
 
     # 5. VERİTABANINA YAZMA

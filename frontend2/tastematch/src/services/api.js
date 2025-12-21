@@ -124,12 +124,86 @@ export const updateProfile = async (data) => {
 };
 
 export const getSocialMatches = async () => {
-    const response = await api.get('/social/matches');
-    return response.data;
+    try {
+        const response = await api.get('/social/candidates');
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching matches:", error);
+        throw error;
+    }
+};
+
+export const swipeUser = async (likedUserId, action) => {
+    try {
+        const response = await api.post('/social/swipe', {
+            liked_user_id: likedUserId,
+            action: action
+        });
+        return response.data;
+    } catch (error) {
+        console.error("Error swiping user:", error);
+        throw error;
+    }
 };
 
 export const refreshUserVector = async () => {
     const response = await api.post('/social/refresh_vector');
+    return response.data;
+};
+
+export const getConfirmedMatches = async () => {
+    try {
+        const response = await api.get('/social/confirmed_matches');
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching confirmed matches:", error);
+        throw error;
+    }
+};
+
+export const getUserProfilePublic = async (userId) => {
+    const response = await api.get(`/users/${userId}/profile`);
+    return response.data;
+};
+
+export const blockUser = async (userId) => {
+    const response = await api.post(`/users/${userId}/block`);
+    return response.data;
+};
+
+export const reportUser = async (userId, reason, details) => {
+    const response = await api.post(`/users/${userId}/report`, { reason, details });
+    return response.data;
+};
+
+// Friends API
+export const getFriends = async () => {
+    const response = await api.get('/friends/list');
+    return response.data;
+};
+
+export const getFriendRequests = async () => {
+    const response = await api.get('/friends/requests');
+    return response.data;
+};
+
+export const sendFriendRequest = async (userId) => {
+    const response = await api.post('/friends/request', { receiver_id: userId });
+    return response.data;
+};
+
+export const acceptFriendRequest = async (requestId) => {
+    const response = await api.post(`/friends/accept/${requestId}`);
+    return response.data;
+};
+
+export const rejectFriendRequest = async (requestId) => {
+    const response = await api.post(`/friends/reject/${requestId}`);
+    return response.data;
+};
+
+export const getDateRecommendations = async (partnerId) => {
+    const response = await api.get('/date/recommendations', { params: { partner_id: partnerId } });
     return response.data;
 };
 

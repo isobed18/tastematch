@@ -1,7 +1,7 @@
 
 from fastapi import FastAPI
 from .database import engine, Base
-from .routers import auth, feed, swipe, social
+from .routers import auth, feed, swipe, social, chat, users, friends, date
 from .inference_service import InferenceService
 import os
 
@@ -32,6 +32,10 @@ app.include_router(auth.router)
 app.include_router(feed.router)
 app.include_router(swipe.router)
 app.include_router(social.router)
+app.include_router(chat.router)
+app.include_router(users.router)
+app.include_router(friends.router)
+app.include_router(date.router)
 
 @app.get("/")
 def read_root():

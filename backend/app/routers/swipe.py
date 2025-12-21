@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+import datetime
 from sqlalchemy.orm import Session
 from .. import models, schemas, database
 from .auth import get_current_user
@@ -31,7 +32,8 @@ def create_swipe(
     new_swipe = models.Swipe(
         user_id=current_user.id,
         item_id=swipe.item_id,
-        action=swipe.action
+        action=swipe.action,
+        timestamp=datetime.datetime.utcnow()
     )
     
 

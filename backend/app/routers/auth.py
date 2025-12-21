@@ -26,6 +26,20 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(models.User).filter(models.User.username == username).first()
     if user is None:
         raise credentials_exception
+    if user is None:
+        raise credentials_exception
+    return user
+
+def get_current_user_ws(token: str, db: Session):
+    try:
+        payload = auth.jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+    except auth.JWTError:
+        return None
+        
+    user = db.query(models.User).filter(models.User.username == username).first()
     return user
 
 @router.post("/register", response_model=schemas.Token)
@@ -106,11 +120,13 @@ def get_profile(
     # Calculate age if birth_date exists (optional enhancement for later)
     
     return {
+        "id": current_user.id,
         "username": current_user.username,
         "birth_date": current_user.birth_date,
         "gender": current_user.gender,
         "location_city": current_user.location_city,
         "bio": current_user.bio,
+        "tags": current_user.tags,
         "watchlist": watchlist,
         "superlikes": superlikes
     }

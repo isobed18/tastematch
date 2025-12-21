@@ -74,3 +74,7 @@ class MessageOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+class ReportCreate(BaseModel):
+    reason: str
+    details: Optional[str] = None

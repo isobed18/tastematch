@@ -71,17 +71,12 @@ class TwoTowerInference:
         self.item_embeddings = torch.cat(all_vecs, dim=0) # [NumItems, Dim]
         print(f"Indexed {num_items} items.")
         
-    def get_recommendations(self, user_id, history_items, history_weights=None, k=10):
+    def get_user_vector(self, user_id, history_items, history_weights=None):
         """
-        user_id: Raw UserID
-        history_items: List of Raw ItemIDs (MovieLens IDs)
-        history_weights: List of weights (optional, default 1.0)
+        Generates the User Embedding (Soul Vector) from history.
         """
-        if self.item_embeddings is None:
-            self.index_items()
-            
         # Map User
-        u_idx = self.user_map.get(user_id, 0) # Default to 0 if new? Or handle Cold Start
+        u_idx = self.user_map.get(user_id, 0) 
         
         # Map History
         h_indices = []
@@ -93,9 +88,6 @@ class TwoTowerInference:
                 h_weights.append(w)
                 
         if not h_indices:
-            # Cold start logic?
-            # Return popular items?
-            # For now, just use empty history
             h_indices = [0]
             h_weights = [0.0]
             
@@ -108,9 +100,25 @@ class TwoTowerInference:
         with torch.no_grad():
             user_vec = self.model.user_tower(u_idx_t, h_idx_t, h_w_t, h_mask_t)
             
+        return user_vec # [1, LatentDim] (Tensor on Device)
+
+    def get_recommendations(self, user_id, history_items, history_weights=None, k=10):
+        """
+        user_id: Raw UserID
+        history_items: List of Raw ItemIDs (MovieLens IDs)
+        history_weights: List of weights (optional, default 1.0)
+        """
+        if self.item_embeddings is None:
+            self.index_items()
+            
+        # 1. Get User Vector
+        user_vec = self.get_user_vector(user_id, history_items, history_weights)
+        
+        with torch.no_grad():
             # Dot Product
             scores = torch.matmul(user_vec, self.item_embeddings.T) # [1, NumItems]
             scores = scores.squeeze(0)
+            
             
             # Top K
             top_scores, top_indices = torch.topk(scores, k)
@@ -120,4 +128,6 @@ class TwoTowerInference:
         for idx in top_indices.cpu().numpy():
             recs.append(self.idx_to_ml_id[idx])
             
-        return recs
+        # Return Recommendations AND User Vector (for Ranker)
+        # user_vec shape is [1, LatentDim]
+        return recs, user_vec.cpu().numpy()
