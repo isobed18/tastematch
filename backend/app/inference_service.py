@@ -11,127 +11,126 @@ try:
     from project.two_tower.inference_utils import TwoTowerInference
     from project.two_tower.ranking_models import RankerModel
     from project.two_tower import config as tt_config
+    import chromadb
 except ImportError as e:
     print(f"Import Error: {e}")
-    raise e
+    # Don't raise, allow partial initialization
+    pass
 
-class InferenceService:
-
-    def __init__(self, model_path=None):
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"Inference Service Device: {self.device}")
-        
         # Define Production Models Directory
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.prod_models_dir = os.path.join(base_dir, "production_models")
         
-        # --- 1. Load Two-Tower (Retrieval) ---
-        print("Loading Two-Tower Retrieval Engine...")
+        # --- 1. Load Domain-Specific Engines ---
+        print("Loading Domain Engines...")
         
+        # A. MOVIE (Two-Tower) - Existing
         retrieval_path = os.path.join(self.prod_models_dir, "two_tower_retrieval_v1.pth")
         if not os.path.exists(retrieval_path):
              print(f"WARNING: Production model not found at {retrieval_path}. Falling back to default.")
-             retrieval_path = None # Let utils decide or fail
+             retrieval_path = None
              
-        self.retrieval_engine = TwoTowerInference(model_path=retrieval_path) 
-        
-        # --- 2. Load Two-Tower Ranker ---
-        print("Loading Two-Tower Ranker Engine...")
+        try:
+             self.movie_engine = TwoTowerInference(model_path=retrieval_path) 
+             self.latent_dim = 512 # Standard
+        except Exception as e:
+             print(f"Failed to load Movie Engine: {e}")
+             self.movie_engine = None
+
+        # B. OTHER DOMAINS (ChromaDB / ANN)
+        # We use a single ChromaDB instance for Books, Music, etc.
+        chroma_path = os.path.join(base_dir, "backend", "chroma_db") 
+        # Note: If running inside Docker, path might differ.
+        if not os.path.exists(chroma_path):
+             os.makedirs(chroma_path, exist_ok=True)
+             
+        try:
+            self.chroma_client = chromadb.PersistentClient(path=chroma_path)
+            # Create/Get collections
+            self.collections = {
+                "book": self.chroma_client.get_or_create_collection("book_embeddings"),
+                "music": self.chroma_client.get_or_create_collection("music_embeddings"),
+                "food": self.chroma_client.get_or_create_collection("food_embeddings"),
+                # Movies theoretically could be here too, but we use TwoTowerInference for now
+            }
+        except Exception as e:
+            print(f"Failed to initialize ChromaDB: {e}")
+            self.chroma_client = None
+            self.collections = {}
+
+        # --- 2. Load Unified Ranker ---
+        print("Loading Ranker Engine...")
         self.ranker_model = self._load_ranker()
         
-        print("Inference Service Initialized Successfully.")
+        print("Multi-Domain Inference Service Initialized.")
 
-
-    def _load_ranker(self):
+    def mix_tastes(self, user_taste_vectors: dict) -> np.ndarray:
         """
-        Loads the pairwise RankerModel.
+        Mixes domain-specific taste vectors into a single Composite Soul Vector.
+        Strategy: Weighted Fusion (Normalize(Sum(Weight * Vector)))
         """
-        try:
-            ranker_path = os.path.join(self.prod_models_dir, "two_tower_ranker_v1.pth")
-            
-            if not os.path.exists(ranker_path):
-                print(f"WARNING: Ranker model not found at {ranker_path}. Ranking will be disabled (Cold Start friendly though!).")
-                return None
+        # Default Weights
+        weights = {
+            "movie": 1.0,
+            "book": 1.0,
+            "music": 0.8,
+            "food": 0.5
+        }
+        
+        # Initialize Composite
+        composite = np.zeros(self.latent_dim, dtype=np.float32)
+        total_weight = 0.0
+        
+        for domain, vector in user_taste_vectors.items():
+            if not vector or len(vector) != self.latent_dim:
+                continue
                 
-            print(f"Loading Ranker from: {ranker_path}")
+            w = weights.get(domain, 0.5)
             
-            # Initialize Model
-            # Latent Dim matches Two Tower (1024 or 512?)
-            # Retrieval Engine uses 512 internally (latent_dim=512 in inference_utils).
-            # So Ranker must match.
-            model = RankerModel(embedding_dim=512) 
+            # --- Advanced: Adjust weight by Recency/Confidence if available ---
+            # (Assuming vector has metadata or passed separately, for now simple dict)
             
-            model.load_state_dict(torch.load(ranker_path, map_location=self.device))
-            model.to(self.device)
-            model.eval()
+            vec_np = np.array(vector, dtype=np.float32)
+            composite += vec_np * w
+            total_weight += w
             
-            return model
+        if total_weight > 0:
+            composite /= total_weight
             
-        except Exception as e:
-            print(f"ERROR loading Ranker: {e}")
-            return None
-
-    def get_recommendations(self, user_id, history_items, k_final=10):
-        """
-        API Entry Point.
-        Returns: List of Item IDs (int)
-        """
-        
-        # 1. RETRIEVAL (Two-Tower)
-        # ------------------------
-        # Get Candidate IDs AND User Vector
-        # user_vec is numpy array [1, 512]
-        candidates, user_vec = self.retrieval_engine.get_recommendations(
-            user_id=user_id,
-            history_items=history_items,
-            k=100 
-        )
-        
-        if not candidates:
-            return []
-
-        # 2. RANKING (Feature Based)
-        # ----------------
-        # Now we use the User Vector (which exists even for new users!) to rank.
-        
-        if self.ranker_model is not None:
-             # Returns list of (id, score)
-            ranked_candidates = self._rank_candidates(user_vec, candidates)
-            print(f"[Inference] Ranked {len(candidates)} candidates. Top 3: {ranked_candidates[:3]}")
-            return ranked_candidates[:k_final]
-        else:
-            # Fallback if ranker missing
-            print(f"[Inference] Ranker missing. Returning Retrieval results.")
-            return [(cand, 0.0) for cand in candidates[:k_final]]
+        # L2 Normalize
+        norm = np.linalg.norm(composite)
+        if norm > 0:
+            composite /= norm
+            
+        return composite
 
     def get_user_embedding(self, user_id, history_items):
         """
         Returns the 512-dim User Vector as a Python List.
         """
         # Call Retrieval Engine
-        # user_vec is Tensor on Device [1, 512]
-        user_vec_t = self.retrieval_engine.get_user_vector(user_id, history_items)
-        
-        # Convert to list
-        user_vec_np = user_vec_t.cpu().numpy().flatten()
-        return user_vec_np.tolist()
+        if self.movie_engine:
+            user_vec_t = self.movie_engine.get_user_vector(user_id, history_items)
+            user_vec_np = user_vec_t.cpu().numpy().flatten()
+            return user_vec_np.tolist()
+        return []
 
     def _rank_candidates(self, user_vec_np, candidate_ids):
         """
         Ranks candidates using UserVector + ItemVector.
         """
-        # 1. Get Item Vectors from Retrieval Engine's Cache
-        # Retrieval engine has 'item_embeddings' (Tensor on Device) and 'item_map' (ID -> Index)
-        
-        # Ensure item embeddings are ready
-        if self.retrieval_engine.item_embeddings is None:
-            self.retrieval_engine.index_items()
+        if not self.movie_engine:
+            return [(c, 0.0) for c in candidate_ids]
+
+        # 1. Get Item Vectors from Movie Engine's Cache
+        if self.movie_engine.item_embeddings is None:
+            self.movie_engine.index_items()
             
         valid_candidates = [] # (RawID, ItemIndex)
         
         for mid in candidate_ids:
-            if mid in self.retrieval_engine.item_map:
-                idx = self.retrieval_engine.item_map[mid]
+            if mid in self.movie_engine.item_map:
+                idx = self.movie_engine.item_map[mid]
                 valid_candidates.append((mid, idx))
                 
         if not valid_candidates:
@@ -140,15 +139,13 @@ class InferenceService:
         # 2. Batch Creation
         n = len(valid_candidates)
         
-        # User Vector: [1, 512] -> [N, 512]
         u_vec_t = torch.tensor(user_vec_np, device=self.device) # [1, 512]
         if u_vec_t.dim() == 1: u_vec_t = u_vec_t.unsqueeze(0)
         u_batch = u_vec_t.repeat(n, 1) # [N, 512]
         
-        # Item Vectors: Gather from cache
         item_indices = [x[1] for x in valid_candidates]
         i_indices_t = torch.tensor(item_indices, device=self.device, dtype=torch.long)
-        i_batch = self.retrieval_engine.item_embeddings[i_indices_t] # [N, 512]
+        i_batch = self.movie_engine.item_embeddings[i_indices_t] # [N, 512]
         
         # 3. Predict
         with torch.no_grad():
@@ -169,13 +166,13 @@ class InferenceService:
     def recommend_for_vector(self, vector_np, k=10):
         """
         Returns items closest to the given vector.
-        vector_np: List or Numpy array of shape [Dim]
         """
-        engine = self.retrieval_engine
+        if not self.movie_engine: return []
+        
+        engine = self.movie_engine
         if engine.item_embeddings is None:
             engine.index_items()
             
-        # Tensorize
         vec_t = torch.tensor(vector_np, device=self.device, dtype=torch.float)
         if vec_t.dim() == 1: vec_t = vec_t.unsqueeze(0) # [1, Dim]
         
@@ -189,3 +186,62 @@ class InferenceService:
             recs.append(engine.idx_to_ml_id[idx])
             
         return recs
+
+    def get_recommendations(self, user_id, history_items=None, domain="movie", k_final=10, user_obj=None):
+        """
+        Unified Entry Point.
+        Returns: List of tuples (item_id, score)
+        """
+        user_vec = None
+        
+        # 1. Resolve User Vector
+        if user_obj and getattr(user_obj, 'taste_vectors', None):
+             # Just use the composite or mix on fly
+             user_vec = self.mix_tastes(user_obj.taste_vectors) # returns np.array
+        
+        # Scenario B: Domain specific fallback (Legacy Movie Logic)
+        if domain == "movie" and self.movie_engine:
+             if history_items:
+                  cands, u_vec = self.movie_engine.get_recommendations(user_id, history_items, k=100)
+                  
+                  # If we didn't have a composite vector, use this one
+                  if user_vec is None:
+                      user_vec = u_vec.flatten()
+                  
+                  # RANK using Feature Ranker
+                  if self.ranker_model:
+                       return self._rank_candidates(user_vec, cands)[:k_final]
+                  else:
+                       return [(c, 0.0) for c in cands[:k_final]]
+                  
+        # 2. Universal Retrieval using User Vector (ANN)
+        if user_vec is None:
+             # No history, no User Obj? 
+             # For Movie domain if TwoTower failed, fallback to empty (Feed router handles popularity)
+             return []
+             
+        # Retrieve from Chroma
+        if domain in self.collections:
+             collection = self.collections[domain]
+             try:
+                 results = collection.query(
+                     query_embeddings=[user_vec.tolist()],
+                     n_results=k_final
+                 )
+                 # Extract IDs
+                 if results['ids']:
+                     ids = results['ids'][0]
+                     dists = results['distances'][0] if 'distances' in results and results['distances'] else [0.0]*len(ids)
+                     
+                     scored = []
+                     for i, mid in enumerate(ids):
+                         # Distance usually L2. Score = ?
+                         # If Cosine distance: 0 is match, 1 is opposite.
+                         d = dists[i]
+                         score = 10.0 * (1.0 - d) # Approximation
+                         scored.append((mid, score))
+                     return scored
+             except Exception as e:
+                 print(f"[Inference] Chroma Query Error: {e}")
+                 
+        return []
