@@ -26,8 +26,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(models.User).filter(models.User.username == username).first()
     if user is None:
         raise credentials_exception
-<<<<<<< HEAD
-=======
     if user is None:
         raise credentials_exception
     return user
@@ -42,7 +40,6 @@ def get_current_user_ws(token: str, db: Session):
         return None
         
     user = db.query(models.User).filter(models.User.username == username).first()
->>>>>>> feature/multi-domain-architecture
     return user
 
 @router.post("/register", response_model=schemas.Token)
@@ -120,13 +117,6 @@ def get_profile(
         models.Swipe.action == models.SwipeAction.superlike
     ).all()
     
-<<<<<<< HEAD
-    return {
-        "username": current_user.username,
-        "watchlist": watchlist,
-        "superlikes": superlikes
-    }
-=======
     # Calculate age if birth_date exists (optional enhancement for later)
     
     return {
@@ -170,4 +160,3 @@ def update_profile(
             "location": current_user.location_city
         }
     }
->>>>>>> feature/multi-domain-architecture

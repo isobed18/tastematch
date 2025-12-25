@@ -3,8 +3,9 @@ from typing import Optional
 from jose import JWTError, jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+import os
 
-SECRET_KEY = "supersecretkey" # Change this in production!
+SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey") # Change this in production!
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
