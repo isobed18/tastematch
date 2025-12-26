@@ -1,24 +1,50 @@
 # TasteMatch - AI Powered Multi-Domain Dating App
 
-**TasteMatch is not just a swiping app; it's a "Taste Inference Engine" that connects people through shared passions in Films, Books, Music, and Food.**
+**"Find Your Soulmate, Not Just a Date."**
 
-By leveraging a **Shared Semantic Space**, TasteMatch understands that a user who loves "Dark Sci-Fi Movies" might also enjoy "Cyberpunk Literature" and "Underground Techno Clubs," and matches them with someone compatible across these diverse domains.
+TasteMatch is a "Taste Inference Engine" designed to connect people through shared passions in Films, Books, Music, and Food. Unlike swiping apps focused on quick hookups, TasteMatch is for those who believe that true compatibility comes from shared experiences and complementary vibes.
 
 ---
 
-## 🚀 Features
+## 📖 The Story & Philosophy
 
-*   **Multi-Domain Taste Profiling**: 
-    *   **Movies**: Powered by MovieLens data + TMDB metadata.
-    *   **Books, Music, Food, Games**: Architecture ready for cross-domain vectors.
+**Why another dating app?**
+Modern dating apps (Tinder, Bumble) have become endless catalogs of faces, often optimized for short-term validation. We built TasteMatch for people who want **validation for their soul, not just their selfies.**
+
+1.  **The "Cinematic Soulmate" Excuse**: We give users a valid reason to seek a deeper connection. "I'm not here for a hookup; I matched with someone who also loves 90s Cyberpunk Movies and Soviet Sci-Fi." It changes the context from "Are they hot?" to "Do they *get* me?"
+2.  **Beyond the Mirror**: While we start by matching similar tastes ("Mirror Match"), our vision recognizes that great relationships often come from differences. The "Complement Match" (e.g., You like Chaos, they like Order) and "Contrast Match" are designed to create friction and conversation, not just echo chambers.
+3.  **The Authority of the Algorithm**: People are indecisive. TasteMatch aims to be the "Date Concierge." Instead of the awkward "Where should we go?", our AI will eventually say: *"You both love Italian food and hate crowded places. We booked a table at Mario's. Go."* We want users to trust the match because the math says it works.
+
+---
+
+## 🚧 Current Status & Roadmap
+
+**Current Version:** 🎬 **Movie Domain Only**
+The app currently profiles users based on their Movie tastes using a refined Two-Tower architecture trained on MovieLens data.
+
+**Coming Soon:**
+*   **📚 Books & 🎵 Music**: Ingesting Goodreads and Last.fm datasets to create a richer "Composite Soul Vector."
+*   **🍔 Food**: Integration with venue APIs to enable the Date Concierge.
+*   **🎮 Games**: For the gamer couples who want to co-op through life.
+
+**Future Vision:**
+*   **Date Concierge**: End-to-end date planning. "Watch *Inception*, then discuss it over coffee at *Third Wave Roasters*."
+*   **Smart Icebreakers**: "Ask them about why they rated *The Room* 5 stars."
+
+---
+
+## 🚀 Key Features
+
+*   **Multi-Domain Architecture**: 
+     Ready to support Books, Music, and Food (currently active for Movies).
 *   **Intelligent Matching**:
     *   **Mirror Match**: You share the exact same taste.
-    *   **Complement Match**: Similar "vibe" but different genres (e.g., You like Hard Sci-Fi, they like High Fantasy).
-    *   **Contrast Match**: Opposites that create great conversation potential.
-*   **Date Concierge**: 
-    *   The app suggests *where* to go based on your combined food/venue tastes.
-    *   "Authority Pitch" mode helps break the indecision loop.
-*   **Shared Semantic Space**: A unified vector architecture where User and Item embeddings live in the same latent dimension (512D).
+    *   **Complement Match**: Similar vibe, different genres (e.g., Hard Sci-Fi vs. High Fantasy).
+    *   **Contrast Match**: Opposites that create spark.
+*   **Shared Semantic Space**: 
+    A unified 512-dimensional vector space where User and Item embeddings coexist.
+
+---
 
 ## 🏗 System Architecture
 
@@ -102,21 +128,9 @@ npx expo start
 
 ---
 
-## 📊 Data Ingestion
-
-To populate the vector database with new domains:
-
-```bash
-# Example
-python ingest_multidomain.py --domain book --path /path/to/goodreads.csv
-python ingest_multidomain.py --domain food --path /path/to/yelp.json
-```
-
----
-
 ## 🤝 Contributing
 
 1.  **Feature Branch**: Create a branch for your specific domain or feature (`feature/book-domain`).
 2.  **Commit**: Use meaningful commit messages.
 3.  **LFS**: Ensure you are NOT committing 1GB+ checkpoints unless they are the final `production_models`.
-4.  **PR**: Submit a Pull Request to `main`.
+4.  **PR**: Submit a Pull Request to `master`.
