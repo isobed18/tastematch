@@ -46,6 +46,38 @@ The app currently profiles users based on their Movie tastes using a refined Two
 
 ---
 
+## 📱 Visual Walkthrough
+
+### 1. Training Your AI 🧠
+Before you match with people, you match with *culture*. The **Training Session** is where you swipe on movies (and soon Books/Music) to build your unique **Soul Vector**.
+<p align="center">
+  <img src="screenshots/training_session.jpeg" width="30%" />
+  <img src="screenshots/trainingsession_like.jpeg" width="30%" />
+</p>
+
+### 2. The Semantic Search 🔍
+Once your profile is ready, our Multi-Domain Engine scans the vector space for users who don't just "look" like you, but *feel* like you.
+<p align="center">
+  <img src="screenshots/discover-main-screen.jpeg" width="30%" />
+  <img src="screenshots/finding_a_moviematch.jpeg" width="30%" />
+</p>
+
+### 3. The Match Experience ✨
+When you find a high-quality match (e.g., 90% compatibility), it's not random. It's based on shared deep interests.
+<p align="center">
+  <img src="screenshots/social_goodmatch.jpeg" width="30%" />
+  <img src="screenshots/foundmatchscreen_withsendmessage.jpeg" width="30%" />
+</p>
+
+### 4. The Concierge & Icebreakers 🍸
+No more "Hey". We provide context-aware icebreakers. And when you're ready to meet, the **Date Concierge** suggests a plan based on your shared tastes.
+<p align="center">
+  <img src="screenshots/chat_initialmessage.jpeg" width="30%" />
+  <img src="screenshots/chat_concierge_suggestion.jpeg" width="30%" />
+</p>
+
+---
+
 ## 🏗 System Architecture
 
 TasteMatch uses a **Two-Tower Architecture** enhanced with **Weighted Taste Fusion** and **Vector Retrieval**.
