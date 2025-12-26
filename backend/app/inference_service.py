@@ -17,6 +17,11 @@ except ImportError as e:
     # Don't raise, allow partial initialization
     pass
 
+class InferenceService:
+    def __init__(self, model_path=None):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"Inference Service Device: {self.device}")
+
         # Define Production Models Directory
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.prod_models_dir = os.path.join(base_dir, "production_models")
