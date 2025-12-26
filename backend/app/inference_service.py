@@ -69,6 +69,35 @@ class InferenceService:
         
         print("Multi-Domain Inference Service Initialized.")
 
+    def _load_ranker(self):
+        """
+        Loads the pairwise RankerModel.
+        """
+        try:
+            ranker_path = os.path.join(self.prod_models_dir, "two_tower_ranker_v1.pth")
+            
+            if not os.path.exists(ranker_path):
+                print(f"WARNING: Ranker model not found at {ranker_path}. Ranking will be disabled (Cold Start friendly though!).")
+                return None
+                
+            print(f"Loading Ranker from: {ranker_path}")
+            
+            # Initialize Model
+            # Latent Dim matches Two Tower (1024 or 512?)
+            # Retrieval Engine uses 512 internally (latent_dim=512 in inference_utils).
+            # So Ranker must match.
+            model = RankerModel(embedding_dim=512) 
+            
+            model.load_state_dict(torch.load(ranker_path, map_location=self.device))
+            model.to(self.device)
+            model.eval()
+            
+            return model
+            
+        except Exception as e:
+            print(f"ERROR loading Ranker: {e}")
+            return None
+
     def mix_tastes(self, user_taste_vectors: dict) -> np.ndarray:
         """
         Mixes domain-specific taste vectors into a single Composite Soul Vector.
