@@ -48,32 +48,56 @@ The app currently profiles users based on their Movie tastes using a refined Two
 
 ## 📱 Visual Walkthrough
 
-### 1. Training Your AI 🧠
-Before you match with people, you match with *culture*. The **Training Session** is where you swipe on movies (and soon Books/Music) to build your unique **Soul Vector**.
+### 1. Profile & Training 🧠
+Your journey starts with your profile and the **Training Session**. You don't just fill out a bio; you swipe on culture (Movies, Books, Music) to build your unique **Soul Vector**.
 <p align="center">
+  <img src="screenshots/myprofile.jpeg" width="30%" />
   <img src="screenshots/training_session.jpeg" width="30%" />
   <img src="screenshots/trainingsession_like.jpeg" width="30%" />
 </p>
 
-### 2. The Semantic Search 🔍
-Once your profile is ready, our Multi-Domain Engine scans the vector space for users who don't just "look" like you, but *feel* like you.
+### 2. The Semantic Search & Discovery 🔍
+Our Multi-Domain Engine scans the vector space. It's not just "People Nearby"; it's "Souls Nearby".
 <p align="center">
   <img src="screenshots/discover-main-screen.jpeg" width="30%" />
-  <img src="screenshots/finding_a_moviematch.jpeg" width="30%" />
+  <img src="screenshots/findingmatch_loading.jpeg" width="30%" />
+  <img src="screenshots/social_no_more_people_nearby.jpeg" width="30%" />
 </p>
 
-### 3. The Match Experience ✨
-When you find a high-quality match (e.g., 90% compatibility), it's not random. It's based on shared deep interests.
+### 3. Match Intelligence (Mirror, Complement, Contrast) ✨
+We show you the **Compatibility Score**. Whether it's a 90% "Mirror Match" or a 60% "Complement", you know *why* you matched.
 <p align="center">
   <img src="screenshots/social_goodmatch.jpeg" width="30%" />
-  <img src="screenshots/foundmatchscreen_withsendmessage.jpeg" width="30%" />
+  <img src="screenshots/social_goodmatch_2.jpeg" width="30%" />
+  <img src="screenshots/social_mid_match.jpeg" width="30%" />
 </p>
 
-### 4. The Concierge & Icebreakers 🍸
-No more "Hey". We provide context-aware icebreakers. And when you're ready to meet, the **Date Concierge** suggests a plan based on your shared tastes.
+### 4. Movie Match AI Recommender 🎬
+Looking for a specific cinematic connection? Our specialized **Movie Match AI** finds your perfect movie partner.
+<p align="center">
+  <img src="screenshots/finding_a_moviematch.jpeg" width="45%" />
+  <img src="screenshots/moviematch.jpeg" width="45%" />
+</p>
+
+### 5. The "It's a Match!" & Icebreakers 🧊
+When you match, we don't leave you hanging. The **Icebreaker** is right there on the screen (e.g., "Ask about 'Inception'"), powered by the shared interests found in your vectors.
+<p align="center">
+  <img src="screenshots/foundmatchscreen_withsendmessage.jpeg" width="45%" />
+</p>
+
+### 6. Chat & Date Concierge 🍸
+From the first message to the date plan. The **Date Concierge** (Sparkles Icon) analyzes your combined tastes to suggest the perfect venue.
 <p align="center">
   <img src="screenshots/chat_initialmessage.jpeg" width="30%" />
   <img src="screenshots/chat_concierge_suggestion.jpeg" width="30%" />
+  <img src="screenshots/chat_concierge_suggestion_automessage.jpeg" width="30%" />
+</p>
+
+### 7. Safety & Profile Details 🛡️
+Deep dive into their profile or manage your safety options easily.
+<p align="center">
+  <img src="screenshots/chat_viewprofile.jpeg" width="45%" />
+  <img src="screenshots/chat_threedot_rep_block_viewprofile.jpeg" width="45%" />
 </p>
 
 ---
